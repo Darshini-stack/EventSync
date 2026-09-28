@@ -1,0 +1,141 @@
+<USER_REQUEST>
+PHASE 8 — EVENTSYNC NOTIFICATIONS
+=================================
+
+You are continuing development of the existing EventSync project.
+
+IMPORTANT:
+Do NOT rebuild or rewrite existing features.
+Do NOT break any currently passing functionality.
+Phase 1–7 + Student Portal are already implemented and verified.
+
+CURRENT VERIFIED BASELINE
+-------------------------
+- 177/177 automated tests passing.
+- Student Portal browser/Puppeteer E2E fully passing.
+- Frontend: Vite on port 5173.
+- Backend: Express + Socket.IO on port 5000.
+- MongoDB: mongodb://127.0.0.1:27017/eventsync
+- MongoDB is currently intentionally clean:
+  events=0
+  registrations=0
+  payments=0
+  tickets=0
+  attendances=0
+  users=3
+- npm run build passes.
+- JWT authentication + RBAC already exists.
+- EVENTADMIN and STUDENT roles already exist.
+- MongoDB is the source of truth.
+- Socket.IO is already used for real-time updates.
+- All business data must remain dynamic.
+- NO hardcoded event/business/student/payment/notification data.
+
+Before modifying anything:
+1. Inspect the existing project structure.
+2. Inspect existing Event, User, Registration, Payment, Ticket, Attendance and AuditLog models.
+3. Inspect existing Socket.IO setup.
+4. Inspect existing authentication/RBAC middleware.
+5. Inspect existing admin/student dashboards.
+6. Inspect all existing tests.
+7. Reuse existing architecture and conventions.
+8. Do not duplicate existing functionality.
+
+==================================================
+GOAL
+==================================================
+
+Implement a complete dynamic Notification System for EventSync.
+
+Notifications must:
+- Persist in MongoDB.
+- Be user-specific.
+- Be delivered in real time through existing Socket.IO.
+- Remain available after page reload.
+- Have read/unread state.
+- Never expose another user's private information.
+- Be generated from actual database events/actions.
+- Work for both STUDENT and EVENTADMIN where applicable.
+- Integrate cleanly into the e
+<truncated 17420 bytes>
+E. Notification appears without manual page refresh
+F. Mark notification read
+G. Unread count updates
+H. Reload page
+I. Notification still exists
+J. Mark all as read
+K. Delete notification
+L. Notification center pagination
+M. Payment workflow notification
+N. Ticket issuance notification
+O. Attendance notification
+P. Admin receives payment submission notification
+Q. Student A cannot see Student B notifications
+R. Student B cannot see Student A notifications
+S. Mobile notification UI works
+T. Tablet notification UI works
+U. Desktop notification UI works
+
+==================================================
+18. RESPONSIVE UI
+==================================================
+
+Verify:
+
+Desktop:
+1280x900
+
+Tablet:
+768x1024
+
+Mobile:
+390x844
+
+Requirements:
+- no horizontal overflow
+- notification dropdown usable
+- notification page usable
+- unread badge visible
+- long notification messages do not break layout
+- timestamps readable
+- buttons accessible
+- mobile drawer/navbar remains functional
+
+==================================================
+19. EXISTING TEST REGRESSION
+==================================================
+
+After implementation, run ALL existing tests.
+
+Do not only run the new notification test.
+
+Run:
+
+test_student_portal.js
+test_registration_link_qr.js
+test_phase7.js
+test_phase6.js
+test_phase5.js
+test_phase4.js
+test_phase3.js
+test_notifications.js
+
+Report exact results.
+
+Expected previous baseline:
+
+30/30
+28/28
+38/38
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-09-16T14:17:29+05:30.
+
+The user's current state is as follows:
+Other open documents:
+- d:\EventSync\client\src\pages\MyPaymentsPage.jsx (LANGUAGE_JAVASCRIPT)
+- d:\EventSync\server\src\controllers\eventController.js (LANGUAGE_JAVASCRIPT)
+- d:\EventSync\client\src\pages\EventDetailsPage.jsx (LANGUAGE_JAVASCRIPT)
+- d:\EventSync\client\src\components\EventCard.jsx (LANGUAGE_JAVASCRIPT)
+- d:\EventSync\client\src\App.jsx (LANGUAGE_JAVASCRIPT)
+</ADDITIONAL_METADATA>

@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment Secrets (keep real keys strictly out of source control)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Build outputs
+dist/
+build/
+
+# Uploads & User data (for future phases)
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# System & IDE files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
