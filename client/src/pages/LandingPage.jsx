@@ -1,417 +1,273 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
+  Zap, 
+  GraduationCap, 
+  ShieldCheck, 
   Compass, 
-  CheckCircle2, 
-  CreditCard, 
-  QrCode, 
-  ScanLine, 
-  Bell, 
-  Bot, 
   ArrowRight, 
   Sparkles, 
-  Calendar, 
-  ShieldCheck, 
-  GraduationCap, 
-  PlusCircle, 
-  Lock, 
-  CalendarX,
-  Users
+  QrCode, 
+  Users, 
+  CheckCircle2, 
+  Activity,
+  Bot
 } from 'lucide-react';
-import { fetchEvents } from '../services/api';
-import { EventCard } from '../components/EventCard';
+import { useAuth } from '../context/AuthContext';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
-import { Modal } from '../components/common/Modal';
-import { EmptyState } from '../components/common/EmptyState';
-import { LoadingSkeleton } from '../components/common/LoadingSkeleton';
 
 export const LandingPage = () => {
-  const [createEventModalOpen, setCreateEventModalOpen] = useState(false);
-  const [events, setEvents] = useState([]);
-  const [loadingEvents, setLoadingEvents] = useState(true);
+  const { user, isAuthenticated, isStudent, isAdmin } = useAuth();
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    const loadEvents = async () => {
-      setLoadingEvents(true);
-      try {
-        const res = await fetchEvents();
-        if (res.success && Array.isArray(res.data)) {
-          setEvents(res.data);
-        } else {
-          setEvents([]);
-        }
-      } catch (err) {
-        setEvents([]);
-      } finally {
-        setLoadingEvents(false);
-      }
-    };
-
-    loadEvents();
-  }, []);
-
-  const productFeatures = [
-    {
-      id: 1,
-      title: 'Event Discovery',
-      description: 'Find upcoming college events in one place.',
-      icon: Compass,
-      tag: 'Phase 3',
-    },
-    {
-      id: 2,
-      title: 'Easy RSVP',
-      description: 'Register for events with a simple and secure process.',
-      icon: CheckCircle2,
-      tag: 'Phase 4',
-    },
-    {
-      id: 3,
-      title: 'Payment Verification',
-      description: 'Upload payment proof and track verification status.',
-      icon: CreditCard,
-      tag: 'Phase 5',
-    },
-    {
-      id: 4,
-      title: 'Digital QR Ticket',
-      description: 'Get your verified QR ticket after approval.',
-      icon: QrCode,
-      tag: 'Phase 6',
-    },
-    {
-      id: 5,
-      title: 'Smart Attendance',
-      description: 'Check in quickly using your QR ticket.',
-      icon: ScanLine,
-      tag: 'Phase 7',
-    },
-    {
-      id: 6,
-      title: 'Real-Time Notifications',
-      description: 'Receive instant updates about events, registration and approvals.',
-      icon: Bell,
-      tag: 'Phase 9',
-    },
-    {
-      id: 7,
-      title: 'AI Event Assistant',
-      description: 'Ask EventSync about events and registration.',
-      icon: Bot,
-      tag: 'Phase 10',
-    },
-  ];
-
-  const workflowSteps = [
-    {
-      number: '01',
-      title: 'Discover Event',
-      desc: 'Browse verified college workshops, hackathons, and cultural fests with live seat availability.',
-    },
-    {
-      number: '02',
-      title: 'Register & Submit Payment',
-      desc: 'Reserve your seat immediately for free events, or upload your payment receipt for fee-based events.',
-    },
-    {
-      number: '03',
-      title: 'Get Verified QR Ticket',
-      desc: 'Organizers verify payment and instantly generate your tamper-proof digital QR ticket.',
-    },
-    {
-      number: '04',
-      title: 'Attend & Check In',
-      desc: 'Show your QR ticket at the campus venue for zero-friction attendance recording.',
-    },
-  ];
+  // If user is already authenticated, provide quick access or auto-direct
+  const dashboardPath = isStudent ? '/student/dashboard' : isAdmin ? '/admin/dashboard' : null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4.5rem' }}>
-      {/* 1. HERO SECTION */}
-      <section className="hero-container">
-        <div className="hero-pill-badge">
-          <Sparkles size={14} />
-          <span>Smart Event Management & RSVP Platform</span>
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3.5rem', minHeight: '75vh', justifyContent: 'center' }}>
+      {/* 1. PROFESSIONAL WELCOME SCREEN (Requirement 1) */}
+      <section className="welcome-screen-animate" style={{ maxWidth: '860px', margin: '1rem auto 0', width: '100%' }}>
+        <div className="welcome-hero-card glass-panel">
+          {/* Glowing Brand Icon */}
+          <div className="welcome-logo-badge">
+            <Zap size={36} color="#FFFFFF" />
+          </div>
 
-        <h1 className="hero-heading">
-          Discover. Register. Experience.
-        </h1>
+          {/* Platform Tag */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.25rem' }}>
+            <div className="hero-pill-badge" style={{ margin: 0 }}>
+              <Sparkles size={14} color="var(--accent-primary)" />
+              <span>Smart Event Management & Real-Time Sync</span>
+            </div>
+          </div>
 
-        <p className="hero-subtext">
-          Manage events, registrations, payments and attendance — all in one smart platform.
-        </p>
-
-        <div className="hero-actions">
-          <Link to="/events">
-            <Button variant="primary" size="lg" icon={Compass}>
-              Explore Events
-            </Button>
-          </Link>
-
-          <Button
-            variant="secondary"
-            size="lg"
-            icon={PlusCircle}
-            onClick={() => setCreateEventModalOpen(true)}
+          {/* EventSync Logo / Branding Heading */}
+          <h1
+            style={{
+              fontSize: 'clamp(2.2rem, 5.5vw, 3.4rem)',
+              fontWeight: '900',
+              letterSpacing: '-0.03em',
+              lineHeight: 1.15,
+              marginBottom: '1rem',
+              background: 'linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 50%, #A5B4FC 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}
           >
-            Create an Event
-          </Button>
-        </div>
+            Welcome to EventSync
+          </h1>
 
-        {/* Platform Metrics Bar */}
-        <div className="hero-metrics-bar">
-          <div className="metric-item">
-            <span className="metric-value">Real-Time</span>
-            <span className="metric-label">Socket.IO Bidirectional Sync</span>
-          </div>
-          <div className="metric-item">
-            <span className="metric-value">Zero</span>
-            <span className="metric-label">Overbooking / Atomic Concurrency</span>
-          </div>
-          <div className="metric-item">
-            <span className="metric-value">QR Pass</span>
-            <span className="metric-label">Instant Digital Check-In</span>
-          </div>
-          <div className="metric-item">
-            <span className="metric-value">AI Guided</span>
-            <span className="metric-label">Authorized Event Assistant</span>
+          {/* Short Welcome Message */}
+          <p
+            style={{
+              color: 'var(--text-secondary)',
+              fontSize: 'clamp(0.95rem, 2.2vw, 1.12rem)',
+              lineHeight: 1.65,
+              maxWidth: '640px',
+              margin: '0 auto 1.5rem',
+            }}
+          >
+            The centralized campus portal for college workshops, hackathons, and cultural fests.
+            Experience real-time seat tracking, dynamic team registrations, and instant digital QR passes.
+          </p>
+
+          {/* Authenticated State Quick Route Indicator */}
+          {isAuthenticated && user && (
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.65rem',
+                padding: '0.55rem 1.1rem',
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+                borderRadius: 'var(--radius-full)',
+                marginBottom: '1.25rem',
+                fontSize: '0.86rem',
+              }}
+            >
+              <CheckCircle2 size={16} color="#10B981" />
+              <span>
+                Signed in as <strong style={{ color: '#34D399' }}>{user.name}</strong> ({user.role})
+              </span>
+            </div>
+          )}
+
+          {/* Core Action Buttons: Student Login & Admin Login (Requirement 1) */}
+          <div className="welcome-actions-row">
+            {isAuthenticated && dashboardPath ? (
+              <>
+                <Link to={dashboardPath}>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    icon={isStudent ? GraduationCap : ShieldCheck}
+                    style={{ minWidth: '220px', padding: '0.85rem 1.75rem', fontSize: '1rem' }}
+                  >
+                    Go to {isStudent ? 'Student Dashboard' : 'Admin Dashboard'}
+                  </Button>
+                </Link>
+                <Link to="/events">
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    icon={Compass}
+                    style={{ minWidth: '200px' }}
+                  >
+                    Browse Campus Events
+                  </Button>
+                </Link>
+              </>
+            ) : (
+              <>
+                {/* Student Login Button */}
+                <Link to="/login" id="student-login-welcome-btn">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    icon={GraduationCap}
+                    style={{
+                      minWidth: '200px',
+                      padding: '0.85rem 1.6rem',
+                      fontSize: '1rem',
+                      fontWeight: '700',
+                      background: 'linear-gradient(135deg, #6366F1 0%, #4F46E5 100%)',
+                    }}
+                  >
+                    Student Login
+                  </Button>
+                </Link>
+
+                {/* Admin Login Button */}
+                <Link to="/admin/login" id="admin-login-welcome-btn">
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    icon={ShieldCheck}
+                    style={{
+                      minWidth: '200px',
+                      padding: '0.85rem 1.6rem',
+                      fontSize: '1rem',
+                      fontWeight: '700',
+                      border: '1px solid rgba(245, 158, 11, 0.4)',
+                      background: 'rgba(245, 158, 11, 0.12)',
+                      color: '#FBBF24',
+                    }}
+                  >
+                    Admin Login
+                  </Button>
+                </Link>
+
+                {/* Public Events Directory Link */}
+                <Link to="/events" id="explore-events-welcome-btn">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    icon={Compass}
+                    style={{ minWidth: '180px', padding: '0.85rem 1.4rem' }}
+                  >
+                    Explore Events
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </section>
 
-      {/* 2. UPCOMING EVENTS PREVIEW SECTION (100% DYNAMIC - ZERO MOCK DATA) */}
-      <section id="events-preview">
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: '1.75rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
-              <Badge variant="info">Live Events Directory</Badge>
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Synchronized with MongoDB</span>
+      {/* 2. THREE CORE PILLARS (Clean showcase, NO event cards displayed on initial screen) */}
+      <section style={{ maxWidth: '1080px', margin: '0 auto', width: '100%' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
+            gap: '1.25rem',
+          }}
+        >
+          <div className="glass-panel" style={{ padding: '1.75rem 1.5rem', borderRadius: '16px' }}>
+            <div
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: 'rgba(99, 102, 241, 0.15)',
+                color: 'var(--accent-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+              }}
+            >
+              <QrCode size={22} />
             </div>
-            <h2 style={{ fontSize: '1.85rem' }}>Upcoming Campus Events</h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-              Browse scheduled campus hackathons, technical workshops, and student activities.
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.4rem' }}>
+              Instant Digital QR Passes
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: 1.6 }}>
+              Register individually or with dynamic teams ($1 \dots N$). Digital event passes with unique security codes are generated automatically upon seat confirmation.
             </p>
           </div>
 
-          <Link to="/events">
-            <Button variant="secondary" size="md">
-              <span>Explore All Events</span>
-              <ArrowRight size={16} />
-            </Button>
+          <div className="glass-panel" style={{ padding: '1.75rem 1.5rem', borderRadius: '16px' }}>
+            <div
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: 'rgba(16, 185, 129, 0.15)',
+                color: '#10B981',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+              }}
+            >
+              <Activity size={22} />
+            </div>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.4rem' }}>
+              Real-Time Concurrency Sync
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: 1.6 }}>
+              Powered by Socket.IO and atomic MongoDB transactions. Zero overbooking, live seat decrementing, and instant status updates across devices.
+            </p>
+          </div>
+
+          <div className="glass-panel" style={{ padding: '1.75rem 1.5rem', borderRadius: '16px' }}>
+            <div
+              style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '12px',
+                background: 'rgba(245, 158, 11, 0.15)',
+                color: '#F59E0B',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '1rem',
+              }}
+            >
+              <ShieldCheck size={22} />
+            </div>
+            <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.4rem' }}>
+              Organizer Operations Suite
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: 1.6 }}>
+              Role-restricted admin suite with attendance checking, roster verification, dynamic QR code management, and automated certificate distribution.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. QUICK NAVIGATION FOOTNOTE */}
+      <section style={{ textAlign: 'center', paddingBottom: '1rem' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          Need to register for an event via QR code? Use the direct link provided on event posters or{' '}
+          <Link to="/events" style={{ color: 'var(--accent-primary)', fontWeight: '600', textDecoration: 'none' }}>
+            browse upcoming events &rarr;
           </Link>
-        </div>
-
-        {loadingEvents ? (
-          <div className="grid-cards">
-            <div className="glass-panel" style={{ padding: '1.5rem' }}><LoadingSkeleton height="200px" /></div>
-            <div className="glass-panel" style={{ padding: '1.5rem' }}><LoadingSkeleton height="200px" /></div>
-            <div className="glass-panel" style={{ padding: '1.5rem' }}><LoadingSkeleton height="200px" /></div>
-          </div>
-        ) : events.length > 0 ? (
-          <div className="grid-cards">
-            {events.slice(0, 3).map((event) => (
-              <EventCard key={event._id || event.id} event={event} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            icon={CalendarX}
-            title="No events published yet"
-            description="Upcoming campus events will appear here once published by campus organizers."
-            action={
-              <Link to="/events">
-                <Button variant="secondary" size="md">
-                  View Events Directory
-                </Button>
-              </Link>
-            }
-          />
-        )}
-      </section>
-
-      {/* 3. HOW EVENTSYNC WORKS */}
-      <section id="how-it-works">
-        <div style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto 2.5rem' }}>
-          <Badge variant="info" style={{ marginBottom: '0.75rem' }}>Simple 4-Step Process</Badge>
-          <h2 style={{ fontSize: '1.85rem', marginBottom: '0.5rem' }}>How EventSync Works</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-            From event discovery to attendance scanning, every step is automated and synchronized in real time.
-          </p>
-        </div>
-
-        <div className="steps-grid">
-          {workflowSteps.map((step, index) => (
-            <div key={index} className="glass-panel step-card">
-              <span className="step-number">{step.number}</span>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: '700' }}>{step.title}</h3>
-              <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-                {step.desc}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* 4. PRODUCT FEATURES SECTION (7 FEATURES) */}
-      <section id="features">
-        <div style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto 2rem' }}>
-          <Badge variant="info" style={{ marginBottom: '0.75rem' }}>Comprehensive Feature Suite</Badge>
-          <h2 style={{ fontSize: '1.85rem', marginBottom: '0.5rem' }}>Built for Modern Campus Events</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-            Everything students and campus organizers need to host, register, and experience world-class college events.
-          </p>
-        </div>
-
-        <div className="features-grid">
-          {productFeatures.map((feat) => {
-            const Icon = feat.icon;
-            return (
-              <div key={feat.id} className="glass-panel feature-card">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div className="feature-icon-wrapper">
-                    <Icon size={22} />
-                  </div>
-                  <Badge variant="neutral" style={{ fontSize: '0.72rem' }}>
-                    {feat.tag}
-                  </Badge>
-                </div>
-
-                <div>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '0.35rem' }}>
-                    {feat.title}
-                  </h3>
-                  <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                    {feat.description}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 5. ROLE ENTRY SECTION */}
-      <section id="role-selection">
-        <div style={{ textAlign: 'center', maxWidth: '640px', margin: '0 auto 2.25rem' }}>
-          <Badge variant="info" style={{ marginBottom: '0.75rem' }}>Role-Based Access</Badge>
-          <h2 style={{ fontSize: '1.85rem', marginBottom: '0.5rem' }}>
-            Choose your EventSync experience
-          </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-            Dedicated interfaces designed specifically for students and authorized campus administrators.
-          </p>
-        </div>
-
-        <div className="role-grid">
-          {/* Student Experience Card */}
-          <div className="glass-panel role-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-              <div
-                style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '12px',
-                  background: 'rgba(99, 102, 241, 0.15)',
-                  color: 'var(--accent-primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <GraduationCap size={26} />
-              </div>
-              <div>
-                <h3 style={{ fontSize: '1.3rem', fontWeight: '700' }}>Student / Participant</h3>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Self-Service Experience</span>
-              </div>
-            </div>
-
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: 1.6 }}>
-              Browse events, register, track your status and manage your tickets. Upload payment proof, receive instant confirmations, and query EventSync AI.
-            </p>
-
-            <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
-              <Link to="/login">
-                <Button variant="primary" size="md" style={{ width: '100%' }}>
-                  <span>Continue as Student</span>
-                  <ArrowRight size={16} />
-                </Button>
-              </Link>
-            </div>
-          </div>
-
-          {/* Admin Experience Card */}
-          <div className="glass-panel role-card">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-              <div
-                style={{
-                  width: '48px',
-                  height: '48px',
-                  borderRadius: '12px',
-                  background: 'rgba(245, 158, 11, 0.15)',
-                  color: '#FBBF24',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <ShieldCheck size={26} />
-              </div>
-              <div>
-                <h3 style={{ fontSize: '1.3rem', fontWeight: '700' }}>EventAdmin Portal</h3>
-                <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Authorized Access Required</span>
-              </div>
-            </div>
-
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: 1.6 }}>
-              Create events, verify registrations, manage attendance and monitor activity. Requires secure Admin Access Code verification.
-            </p>
-
-            <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
-              <Link to="/admin/login">
-                <Button
-                  variant="outline"
-                  size="md"
-                  style={{ width: '100%', borderColor: 'rgba(245, 158, 11, 0.5)', color: '#FBBF24' }}
-                >
-                  <Lock size={15} />
-                  <span>Admin Portal</span>
-                  <ArrowRight size={16} />
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Modal: "Create an Event" Information dialog */}
-      <Modal
-        isOpen={createEventModalOpen}
-        onClose={() => setCreateEventModalOpen(false)}
-        title="Event Creation is an EventAdmin Action"
-        subtitle="Role-Based Security Policy"
-        actions={
-          <>
-            <Button variant="secondary" onClick={() => setCreateEventModalOpen(false)}>
-              Close
-            </Button>
-            <Link to="/admin/login" onClick={() => setCreateEventModalOpen(false)}>
-              <Button variant="primary">
-                Proceed to EventAdmin Portal
-              </Button>
-            </Link>
-          </>
-        }
-      >
-        <p style={{ lineHeight: 1.6, marginBottom: '0.85rem' }}>
-          In EventSync, event creation is restricted to verified campus organizers holding an active <strong>EventAdmin</strong> role and an authorized <strong>Admin Access Code</strong>.
         </p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-          Student accounts cannot create or publish events.
-        </p>
-      </Modal>
+      </section>
     </div>
   );
 };

@@ -595,7 +595,7 @@ export const MyTicketsPage = () => {
             }
           />
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '1.75rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '1.75rem' }}>
             {tickets.map((ticket) => {
               const matchedAtt = attendances.find(
                 (a) =>

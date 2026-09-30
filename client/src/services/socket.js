@@ -3,6 +3,16 @@ import { io } from 'socket.io-client';
 let socket = null;
 
 export const getSocketUrl = () => {
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hostname.startsWith('10.'))
+  ) {
+    return window.location.origin;
+  }
+
   const envUrl = import.meta.env.VITE_SOCKET_URL;
   if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
     return envUrl;

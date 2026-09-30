@@ -876,18 +876,34 @@ export const StudentDashboardPage = () => {
                         {event.category || 'Event'}
                       </span>
 
-                      <span
-                        style={{
-                          padding: '0.25rem 0.65rem',
-                          borderRadius: 'var(--radius-full)',
-                          background: event.isPaid ? '#F59E0B' : '#10B981',
-                          color: 'white',
-                          fontSize: '0.75rem',
-                          fontWeight: '800',
-                        }}
-                      >
-                        {event.isPaid ? `₹${event.fee}` : 'FREE'}
-                      </span>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span
+                          style={{
+                            padding: '0.25rem 0.65rem',
+                            borderRadius: 'var(--radius-full)',
+                            background: event.isPaid ? '#F59E0B' : '#10B981',
+                            color: 'white',
+                            fontSize: '0.75rem',
+                            fontWeight: '800',
+                          }}
+                        >
+                          {event.isPaid ? `₹${event.fee}` : 'FREE'}
+                        </span>
+                        {(event.prizeMoney > 0 || event.firstPrize > 0 || event.secondPrize > 0 || event.thirdPrize > 0) && (
+                          <span
+                            style={{
+                              padding: '0.25rem 0.65rem',
+                              borderRadius: 'var(--radius-full)',
+                              background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+                              color: 'white',
+                              fontSize: '0.75rem',
+                              fontWeight: '800',
+                            }}
+                          >
+                            🏆 ₹{Number(event.prizeMoney || ((Number(event.firstPrize) || 0) + (Number(event.secondPrize) || 0) + (Number(event.thirdPrize) || 0))).toLocaleString('en-IN')}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Bottom Indicator on Header */}
@@ -926,6 +942,27 @@ export const StudentDashboardPage = () => {
                       >
                         {event.title}
                       </h3>
+
+                      {/* 3 Prizes Breakdown */}
+                      {(event.firstPrize > 0 || event.secondPrize > 0 || event.thirdPrize > 0) && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            gap: '0.35rem',
+                            flexWrap: 'wrap',
+                            margin: '0.25rem 0 0.5rem',
+                            padding: '0.3rem 0.5rem',
+                            background: 'rgba(245, 158, 11, 0.08)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid rgba(245, 158, 11, 0.25)',
+                            fontSize: '0.74rem',
+                          }}
+                        >
+                          {event.firstPrize > 0 && <span style={{ color: '#FCD34D', fontWeight: '700' }}>🥇 1st: ₹{event.firstPrize}</span>}
+                          {event.secondPrize > 0 && <span style={{ color: '#E2E8F0', fontWeight: '600' }}>🥈 2nd: ₹{event.secondPrize}</span>}
+                          {event.thirdPrize > 0 && <span style={{ color: '#FB923C', fontWeight: '600' }}>🥉 3rd: ₹{event.thirdPrize}</span>}
+                        </div>
+                      )}
                       <p
                         style={{
                           color: 'var(--text-secondary)',

@@ -558,7 +558,7 @@ export const EventDetailsPage = () => {
           >
             FREE ADMISSION
           </span>
-          {event.prizeMoney > 0 && (
+          {(event.prizeMoney > 0 || event.firstPrize > 0 || event.secondPrize > 0 || event.thirdPrize > 0) && (
             <span
               style={{
                 padding: '0.35rem 0.85rem',
@@ -569,7 +569,7 @@ export const EventDetailsPage = () => {
                 color: '#FFFFFF',
               }}
             >
-              🏆 ₹{Number(event.prizeMoney).toLocaleString('en-IN')} Prize Pool
+              🏆 ₹{Number(event.prizeMoney || (Number(event.firstPrize || 0) + Number(event.secondPrize || 0) + Number(event.thirdPrize || 0))).toLocaleString('en-IN')} Prize Pool
             </span>
           )}
           {myRegistration && (
@@ -654,7 +654,7 @@ export const EventDetailsPage = () => {
       )}
 
       {/* Main Content Layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '2rem' }}>
         {/* Left Column: Event Overview & Description */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
           {/* Feature: Dynamic Event Poster Display with fallback */}
@@ -779,12 +779,70 @@ export const EventDetailsPage = () => {
                 }}
               >
                 <div style={{ fontSize: '0.78rem', color: '#FBBF24', textTransform: 'uppercase', fontWeight: '600' }}>
-                  Total Prize Money
+                  Total Prize Pool
                 </div>
                 <div style={{ fontSize: '1.4rem', fontWeight: '800', color: '#FFFFFF', marginTop: '0.25rem' }}>
-                  {event.prizeMoney > 0 ? `₹${Number(event.prizeMoney).toLocaleString('en-IN')}` : 'No prize money specified'}
+                  {(event.prizeMoney > 0 || event.firstPrize > 0 || event.secondPrize > 0 || event.thirdPrize > 0)
+                    ? `₹${Number(event.prizeMoney || ((Number(event.firstPrize) || 0) + (Number(event.secondPrize) || 0) + (Number(event.thirdPrize) || 0))).toLocaleString('en-IN')}`
+                    : 'No prize money specified'}
                 </div>
               </div>
+
+              {(event.firstPrize > 0 || event.secondPrize > 0 || event.thirdPrize > 0) && (
+                <>
+                  {event.firstPrize > 0 && (
+                    <div
+                      style={{
+                        padding: '1rem',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.08) 100%)',
+                        border: '1px solid rgba(245, 158, 11, 0.35)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.78rem', color: '#FCD34D', textTransform: 'uppercase', fontWeight: '700' }}>
+                        🥇 1st Prize
+                      </div>
+                      <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#FFFFFF', marginTop: '0.25rem' }}>
+                        ₹{Number(event.firstPrize).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                  )}
+                  {event.secondPrize > 0 && (
+                    <div
+                      style={{
+                        padding: '1rem',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'linear-gradient(135deg, rgba(148, 163, 184, 0.15) 0%, rgba(100, 116, 139, 0.08) 100%)',
+                        border: '1px solid rgba(148, 163, 184, 0.35)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.78rem', color: '#CBD5E1', textTransform: 'uppercase', fontWeight: '700' }}>
+                        🥈 2nd Prize
+                      </div>
+                      <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#FFFFFF', marginTop: '0.25rem' }}>
+                        ₹{Number(event.secondPrize).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                  )}
+                  {event.thirdPrize > 0 && (
+                    <div
+                      style={{
+                        padding: '1rem',
+                        borderRadius: 'var(--radius-md)',
+                        background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.15) 0%, rgba(194, 65, 12, 0.08) 100%)',
+                        border: '1px solid rgba(234, 88, 12, 0.35)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.78rem', color: '#FDBA74', textTransform: 'uppercase', fontWeight: '700' }}>
+                        🥉 3rd Prize
+                      </div>
+                      <div style={{ fontSize: '1.3rem', fontWeight: '800', color: '#FFFFFF', marginTop: '0.25rem' }}>
+                        ₹{Number(event.thirdPrize).toLocaleString('en-IN')}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
 
               <div
                 style={{

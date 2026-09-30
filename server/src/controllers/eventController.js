@@ -309,8 +309,15 @@ const createEvent = async (req, res, next) => {
     const eventMode = ['Offline', 'Online', 'Hybrid'].includes(mode) ? mode : 'Offline';
     const teamSize = Math.max(1, Math.min(10, parseInt(maxTeamSize, 10) || 5));
 
-    // Prize money validation
-    const parsedPrizeMoney = Math.max(0, parseFloat(prizeMoney) || 0);
+    // Prize money & positions (1st, 2nd, 3rd)
+    const { firstPrize, secondPrize, thirdPrize } = req.body;
+    const parsedFirstPrize = Math.max(0, parseFloat(firstPrize) || 0);
+    const parsedSecondPrize = Math.max(0, parseFloat(secondPrize) || 0);
+    const parsedThirdPrize = Math.max(0, parseFloat(thirdPrize) || 0);
+    let parsedPrizeMoney = Math.max(0, parseFloat(prizeMoney) || 0);
+    if (!parsedPrizeMoney && (parsedFirstPrize || parsedSecondPrize || parsedThirdPrize)) {
+      parsedPrizeMoney = parsedFirstPrize + parsedSecondPrize + parsedThirdPrize;
+    }
 
     // Participation certificate availability
     const certAvailable =
@@ -408,6 +415,9 @@ const createEvent = async (req, res, next) => {
       isPaid: booleanIsPaid,
       fee: numFee,
       prizeMoney: parsedPrizeMoney,
+      firstPrize: parsedFirstPrize,
+      secondPrize: parsedSecondPrize,
+      thirdPrize: parsedThirdPrize,
       participationCertificateAvailable: certAvailable,
       facultyCoordinatorName: facultyName,
       coordinators: parsedCoordinators,
@@ -634,6 +644,17 @@ const updateEvent = async (req, res, next) => {
       }
     }
 
+    const { firstPrize, secondPrize, thirdPrize } = req.body;
+    if (firstPrize !== undefined) {
+      event.firstPrize = Math.max(0, parseFloat(firstPrize) || 0);
+    }
+    if (secondPrize !== undefined) {
+      event.secondPrize = Math.max(0, parseFloat(secondPrize) || 0);
+    }
+    if (thirdPrize !== undefined) {
+      event.thirdPrize = Math.max(0, parseFloat(thirdPrize) || 0);
+    }
+
     if (prizeMoney !== undefined) {
       const parsedPrize = parseFloat(prizeMoney);
       if (isNaN(parsedPrize) || parsedPrize < 0) {
@@ -643,6 +664,10 @@ const updateEvent = async (req, res, next) => {
         });
       }
       event.prizeMoney = parsedPrize;
+    } else if (firstPrize !== undefined || secondPrize !== undefined || thirdPrize !== undefined) {
+      if ((event.firstPrize || event.secondPrize || event.thirdPrize) && (!event.prizeMoney || event.prizeMoney === 0)) {
+        event.prizeMoney = (event.firstPrize || 0) + (event.secondPrize || 0) + (event.thirdPrize || 0);
+      }
     }
 
     if (participationCertificateAvailable !== undefined) {
@@ -929,6 +954,15 @@ const getEventPoster = async (req, res, next) => {
 
     const posterPath = path.resolve(event.poster.path);
     if (!fs.existsSync(posterPath)) {
+      // Fallback: check uploads/posters in current repository by filename
+      const localFilenamePath = event.poster.filename
+        ? path.resolve(__dirname, '../../uploads/posters', event.poster.filename)
+        : null;
+      if (localFilenamePath && fs.existsSync(localFilenamePath)) {
+        res.setHeader('Content-Type', event.poster.mimetype || 'image/jpeg');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        return res.sendFile(localFilenamePath);
+      }
       return res.status(404).json({ success: false, message: 'Poster file is missing from server storage.' });
     }
 
@@ -980,10 +1014,12 @@ const getEventRegistrationQr = async (req, res, next) => {
     }
 
     // 2. Resolve configured public/LAN base URL:
-    const serverPublicUrl = (process.env.PUBLIC_APP_URL || config.publicAppUrl || '').trim();
+    const serverPublicUrl = (process.env.PUBLIC_APP_URL || config.publicAppUrl || config.clientUrl || '').trim();
     const lanIp = getLocalIpAddress() || '127.0.0.1';
     const protocol = req.protocol === 'https' ? 'https' : 'http';
-    let registrationUrl = `${protocol}://${lanIp}:${frontendPort}/events/${event._id}/register`;
+    let registrationUrl = serverPublicUrl
+      ? `${serverPublicUrl.replace(/\/+$/, '')}/events/${event._id}/register`
+      : `${protocol}://${lanIp}:${frontendPort}/events/${event._id}/register`;
 
     // Explicit clientUrl query param takes highest precedence
     if (req.query.clientUrl) {

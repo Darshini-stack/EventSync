@@ -36,6 +36,8 @@ import {
   Upload,
   Search,
   Award,
+  Ticket,
+  AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -44,6 +46,7 @@ import {
   updateEvent,
   deleteEvent,
   fetchAdminRegistrations,
+  fetchRegistrationById,
   fetchAdminTickets,
   fetchAdminAttendance,
   fetchAdminAttendanceRoster,
@@ -170,6 +173,9 @@ export const AdminDashboardPage = () => {
     mode: 'Offline',
     registrationDeadline: '',
     prizeMoney: '0',
+    firstPrize: '0',
+    secondPrize: '0',
+    thirdPrize: '0',
     participationCertificateAvailable: true,
     facultyCoordinatorName: '',
     coordinator1Name: '',
@@ -201,6 +207,35 @@ export const AdminDashboardPage = () => {
   const [manualVerifyPassCode, setManualVerifyPassCode] = useState('');
   const [manualVerifyLoading, setManualVerifyLoading] = useState(false);
   const [manualVerifyResult, setManualVerifyResult] = useState(null);
+
+  // Registration Details Modal State (Requirement 7)
+  const [selectedRegDetailsId, setSelectedRegDetailsId] = useState(null);
+  const [regDetailsModalOpen, setRegDetailsModalOpen] = useState(false);
+  const [regDetailsLoading, setRegDetailsLoading] = useState(false);
+  const [regDetailsData, setRegDetailsData] = useState(null);
+  const [regDetailsError, setRegDetailsError] = useState(null);
+
+  const handleOpenRegistrationDetails = async (registrationId) => {
+    if (!registrationId) return;
+    setSelectedRegDetailsId(registrationId);
+    setRegDetailsModalOpen(true);
+    setRegDetailsLoading(true);
+    setRegDetailsError(null);
+    setRegDetailsData(null);
+
+    try {
+      const res = await fetchRegistrationById(registrationId);
+      if (res && res.success && res.data) {
+        setRegDetailsData(res.data);
+      } else {
+        setRegDetailsError(res?.message || 'Failed to load registration details from database.');
+      }
+    } catch (err) {
+      setRegDetailsError('Server or network error loading registration details.');
+    } finally {
+      setRegDetailsLoading(false);
+    }
+  };
 
   // Fetch admin events, registrations, tickets, smart attendance, and certificates from MongoDB
   const loadAdminData = useCallback(async (isSilent = false) => {
@@ -504,6 +539,9 @@ export const AdminDashboardPage = () => {
       isPaid: false,
       fee: '0',
       prizeMoney: event.prizeMoney !== undefined ? String(event.prizeMoney) : '0',
+      firstPrize: event.firstPrize !== undefined ? String(event.firstPrize) : '0',
+      secondPrize: event.secondPrize !== undefined ? String(event.secondPrize) : '0',
+      thirdPrize: event.thirdPrize !== undefined ? String(event.thirdPrize) : '0',
       participationCertificateAvailable: event.participationCertificateAvailable !== false,
       facultyCoordinatorName: event.facultyCoordinatorName || event.facultyCoordinator || '',
       coordinator1Name: coords[0]?.coordinatorName || coords[0]?.name || '',
@@ -635,7 +673,13 @@ export const AdminDashboardPage = () => {
       return;
     }
 
-    const numPrizeMoney = Math.max(0, parseFloat(formData.prizeMoney) || 0);
+    const numFirstPrize = Math.max(0, parseFloat(formData.firstPrize) || 0);
+    const numSecondPrize = Math.max(0, parseFloat(formData.secondPrize) || 0);
+    const numThirdPrize = Math.max(0, parseFloat(formData.thirdPrize) || 0);
+    let numPrizeMoney = Math.max(0, parseFloat(formData.prizeMoney) || 0);
+    if (!numPrizeMoney && (numFirstPrize || numSecondPrize || numThirdPrize)) {
+      numPrizeMoney = numFirstPrize + numSecondPrize + numThirdPrize;
+    }
 
     // Validate registration deadline if set
     if (formData.registrationDeadline) {
@@ -690,6 +734,9 @@ export const AdminDashboardPage = () => {
     fd.append('isPaid', 'false');
     fd.append('fee', '0');
     fd.append('prizeMoney', numPrizeMoney);
+    fd.append('firstPrize', numFirstPrize);
+    fd.append('secondPrize', numSecondPrize);
+    fd.append('thirdPrize', numThirdPrize);
     fd.append('participationCertificateAvailable', String(formData.participationCertificateAvailable));
     fd.append('facultyCoordinatorName', formData.facultyCoordinatorName.trim());
     fd.append('coordinators', JSON.stringify(coords));
@@ -1248,6 +1295,24 @@ export const AdminDashboardPage = () => {
                             <Badge variant={event.isPaid ? 'warning' : 'success'}>
                               {event.isPaid ? `₹${event.fee}` : 'FREE'}
                             </Badge>
+                            {(event.prizeMoney > 0 || event.firstPrize > 0 || event.secondPrize > 0 || event.thirdPrize > 0) && (
+                              <span
+                                style={{
+                                  padding: '0.2rem 0.6rem',
+                                  borderRadius: 'var(--radius-full)',
+                                  background: 'rgba(245, 158, 11, 0.15)',
+                                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                                  color: '#FCD34D',
+                                  fontSize: '0.75rem',
+                                  fontWeight: '700',
+                                }}
+                              >
+                                🏆 ₹{Number(event.prizeMoney || ((Number(event.firstPrize) || 0) + (Number(event.secondPrize) || 0) + (Number(event.thirdPrize) || 0))).toLocaleString('en-IN')}
+                                {(event.firstPrize > 0 || event.secondPrize > 0 || event.thirdPrize > 0)
+                                  ? ` (1st: ₹${event.firstPrize || 0}, 2nd: ₹${event.secondPrize || 0}, 3rd: ₹${event.thirdPrize || 0})`
+                                  : ''}
+                              </span>
+                            )}
                             {event.poster?.filename && (
                               <Badge variant="neutral">Poster Attached</Badge>
                             )}
@@ -1623,7 +1688,7 @@ export const AdminDashboardPage = () => {
 
             <form
               onSubmit={handleManualVerifyTicket}
-              style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', alignItems: 'flex-end' }}
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '1rem', alignItems: 'flex-end' }}
             >
               {/* Select Event */}
               <div>
@@ -2602,9 +2667,22 @@ export const AdminDashboardPage = () => {
                           )}
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                          <span>Registered: <strong>{new Date(reg.registeredAt || reg.createdAt).toLocaleDateString()}</strong></span>
-                          <span>Team Size: <strong style={{ color: 'var(--accent-primary)' }}>{reg.teamSize || attendeesList.length}</strong></span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Registered: <strong>{new Date(reg.registeredAt || reg.createdAt).toLocaleDateString()}</strong>
+                          </span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                            Team Size: <strong style={{ color: 'var(--accent-primary)' }}>{reg.teamSize || attendeesList.length}</strong>
+                          </span>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon={Eye}
+                            onClick={() => handleOpenRegistrationDetails(reg._id)}
+                            style={{ padding: '0.3rem 0.75rem', fontSize: '0.82rem', fontWeight: '700' }}
+                          >
+                            Details
+                          </Button>
                         </div>
                       </div>
 
@@ -2939,47 +3017,126 @@ export const AdminDashboardPage = () => {
             </div>
           </div>
 
-          {/* Prize Money & Certificate Availability */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1rem', alignItems: 'center' }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Prize Money (₹)</label>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                placeholder="e.g. 50000"
-                value={formData.prizeMoney}
-                onChange={(e) => setFormData({ ...formData, prizeMoney: e.target.value })}
-                className="form-input"
-                disabled={formSubmitting}
-              />
+          {/* Prize Money & Positions (1st, 2nd, 3rd) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', padding: '1.1rem', background: 'rgba(245, 158, 11, 0.04)', borderRadius: 'var(--radius-md)', border: '1px solid rgba(245, 158, 11, 0.22)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', alignItems: 'center' }}>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label" style={{ color: '#FCD34D', fontWeight: '600' }}>Total Prize Money / Pool (₹)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="e.g. 500"
+                  value={formData.prizeMoney}
+                  onChange={(e) => setFormData({ ...formData, prizeMoney: e.target.value })}
+                  className="form-input"
+                  disabled={formSubmitting}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Participation Certificate</label>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.65rem',
+                    cursor: 'pointer',
+                    padding: '0.65rem 0.85rem',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.participationCertificateAvailable}
+                    onChange={(e) => setFormData({ ...formData, participationCertificateAvailable: e.target.checked })}
+                    disabled={formSubmitting}
+                    style={{ width: '18px', height: '18px', accentColor: '#10B981' }}
+                  />
+                  <span style={{ fontSize: '0.88rem', fontWeight: '500', color: 'var(--text-primary)' }}>
+                    Certificate Available
+                  </span>
+                </label>
+              </div>
             </div>
 
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Participation Certificate</label>
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.65rem',
-                  cursor: 'pointer',
-                  padding: '0.65rem 0.85rem',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--border-subtle)',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={formData.participationCertificateAvailable}
-                  onChange={(e) => setFormData({ ...formData, participationCertificateAvailable: e.target.checked })}
-                  disabled={formSubmitting}
-                  style={{ width: '18px', height: '18px', accentColor: '#10B981' }}
-                />
-                <span style={{ fontSize: '0.88rem', fontWeight: '500', color: 'var(--text-primary)' }}>
-                  Participation Certificate Available
+            {/* 3 Prizes Optional Breakdown */}
+            <div style={{ borderTop: '1px dashed rgba(245, 158, 11, 0.2)', paddingTop: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.45rem' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                  Prize Breakdown (Optional):
                 </span>
-              </label>
+                <span style={{ fontSize: '0.75rem', color: '#FBBF24' }}>
+                  Auto-sums to Total Pool if unset
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '0.75rem' }}>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.76rem', color: '#FCD34D' }}>🥇 1st Prize (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="e.g. 300"
+                    value={formData.firstPrize}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const sum = (parseFloat(val) || 0) + (parseFloat(formData.secondPrize) || 0) + (parseFloat(formData.thirdPrize) || 0);
+                      setFormData({
+                        ...formData,
+                        firstPrize: val,
+                        prizeMoney: formData.prizeMoney === '0' || !formData.prizeMoney ? String(sum) : formData.prizeMoney,
+                      });
+                    }}
+                    className="form-input"
+                    disabled={formSubmitting}
+                  />
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.76rem', color: '#CBD5E1' }}>🥈 2nd Prize (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="e.g. 150"
+                    value={formData.secondPrize}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const sum = (parseFloat(formData.firstPrize) || 0) + (parseFloat(val) || 0) + (parseFloat(formData.thirdPrize) || 0);
+                      setFormData({
+                        ...formData,
+                        secondPrize: val,
+                        prizeMoney: formData.prizeMoney === '0' || !formData.prizeMoney ? String(sum) : formData.prizeMoney,
+                      });
+                    }}
+                    className="form-input"
+                    disabled={formSubmitting}
+                  />
+                </div>
+                <div>
+                  <label className="form-label" style={{ fontSize: '0.76rem', color: '#FDBA74' }}>🥉 3rd Prize (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="e.g. 50"
+                    value={formData.thirdPrize}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const sum = (parseFloat(formData.firstPrize) || 0) + (parseFloat(formData.secondPrize) || 0) + (parseFloat(val) || 0);
+                      setFormData({
+                        ...formData,
+                        thirdPrize: val,
+                        prizeMoney: formData.prizeMoney === '0' || !formData.prizeMoney ? String(sum) : formData.prizeMoney,
+                      });
+                    }}
+                    className="form-input"
+                    disabled={formSubmitting}
+                  />
+                </div>
+              </div>
             </div>
           </div>
 
@@ -3484,6 +3641,380 @@ export const AdminDashboardPage = () => {
             </div>
           </div>
         </div>
+      </Modal>
+
+      {/* REGISTRATION DETAILS MODAL (Requirement 7) */}
+      <Modal
+        isOpen={regDetailsModalOpen}
+        onClose={() => setRegDetailsModalOpen(false)}
+        title="Registration Details"
+        subtitle={
+          regDetailsData
+            ? `${regDetailsData.registrationCode || regDetailsData._id} • ${regDetailsData.event?.title || 'Campus Event'}`
+            : 'Loading Registration...'
+        }
+        maxWidth="820px"
+        actions={
+          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', width: '100%' }}>
+            {regDetailsData && (
+              <Button
+                variant="outline"
+                size="sm"
+                icon={RefreshCw}
+                onClick={() => handleOpenRegistrationDetails(selectedRegDetailsId)}
+                disabled={regDetailsLoading}
+              >
+                Refresh
+              </Button>
+            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setRegDetailsModalOpen(false)}
+            >
+              Close
+            </Button>
+          </div>
+        }
+      >
+        {/* Loading State */}
+        {regDetailsLoading && (
+          <div style={{ padding: '2.5rem 1rem', textAlign: 'center' }}>
+            <LoadingSkeleton height="180px" />
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '1rem' }}>
+              Fetching verified registration records from MongoDB...
+            </p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {!regDetailsLoading && regDetailsError && (
+          <div style={{ padding: '1rem 0' }}>
+            <Alert variant="error" style={{ marginBottom: '1.25rem' }}>
+              {regDetailsError}
+            </Alert>
+            <div style={{ textAlign: 'center' }}>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={RefreshCw}
+                onClick={() => handleOpenRegistrationDetails(selectedRegDetailsId)}
+              >
+                Retry Loading Details
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Empty / Missing Registration State */}
+        {!regDetailsLoading && !regDetailsError && !regDetailsData && (
+          <EmptyState
+            icon={AlertCircle}
+            title="Registration Not Found"
+            description="The requested registration could not be located in the database."
+          />
+        )}
+
+        {/* Complete Registration Details View */}
+        {!regDetailsLoading && !regDetailsError && regDetailsData && (() => {
+          const reg = regDetailsData;
+          const ev = reg.event || {};
+          const isTeam = reg.isTeam || reg.teamSize > 1 || (reg.teamMembers && reg.teamMembers.length > 0);
+          const passCode = reg.passCode || reg.ticketCode || reg.registrationCode || '';
+          const isPaidEvent = ev.isPaid || (ev.fee && ev.fee > 0);
+          const payment = reg.payment;
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxHeight: '72vh', overflowY: 'auto', paddingRight: '0.25rem' }}>
+              {/* Top Status & Summary Badges */}
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '0.75rem',
+                  padding: '0.9rem 1.15rem',
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  borderRadius: '10px',
+                  border: '1px solid var(--border-subtle)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+                  <Badge variant={reg.status === 'REGISTERED' ? 'success' : 'danger'} dot>
+                    {reg.status || 'REGISTERED'}
+                  </Badge>
+                  <Badge variant={isTeam ? 'primary' : 'neutral'}>
+                    {isTeam ? `Team (${reg.teamSize || 2} Students)` : 'Individual Registration'}
+                  </Badge>
+                  {reg.teamName && (
+                    <span style={{ fontWeight: '700', fontSize: '0.92rem', color: '#F1F5F9' }}>
+                      Team: "{reg.teamName}"
+                    </span>
+                  )}
+                  {passCode && (
+                    <code style={{ fontSize: '0.8rem', padding: '0.15rem 0.45rem', background: 'var(--bg-tertiary)', borderRadius: '4px' }}>
+                      Pass: #{passCode}
+                    </code>
+                  )}
+                </div>
+
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  Registered: <strong>{new Date(reg.registeredAt || reg.createdAt).toLocaleString()}</strong>
+                </div>
+              </div>
+
+              {/* Event Information Box */}
+              <div
+                className="glass-panel"
+                style={{
+                  padding: '1.25rem',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(15, 23, 42, 0.7) 100%)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <Calendar size={18} color="var(--accent-primary)" />
+                  <h4 style={{ fontSize: '1rem', fontWeight: '800', margin: 0 }}>
+                    Event Information
+                  </h4>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', fontSize: '0.86rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Event Title</span>
+                    <strong style={{ color: '#F8FAFC', fontSize: '0.95rem' }}>{ev.title || 'N/A'}</strong>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Category & Mode</span>
+                    <span>{ev.category || 'General'} • {ev.mode || 'Offline'}</span>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Date & Schedule</span>
+                    <span>
+                      {ev.date ? new Date(ev.date).toLocaleDateString() : 'N/A'}
+                      {ev.time ? ` (${ev.time})` : ''}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Venue Location</span>
+                    <span>{ev.venue || 'Campus Venue'}</span>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', display: 'block' }}>Registration Fee</span>
+                    <Badge variant={isPaidEvent ? 'warning' : 'success'}>
+                      {isPaidEvent ? `₹${ev.fee || 0}` : 'FREE ENTRY'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              {/* Student 1: Primary Contact / Team Leader */}
+              <div
+                className="student-section-card"
+                style={{
+                  background: 'rgba(255,255,255,0.02)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-subtle)',
+                  padding: '1.25rem',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <Badge variant="primary" style={{ fontWeight: '800' }}>Student 1</Badge>
+                    <strong style={{ fontSize: '1rem', color: '#F8FAFC' }}>
+                      {reg.fullName || reg.student?.name || 'Primary Registrant'}
+                    </strong>
+                    <span style={{ fontSize: '0.78rem', color: '#38BDF8' }}>
+                      ({isTeam ? 'Team Leader / Primary Contact' : 'Individual Participant'})
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <Badge variant={reg.attendanceStatus === 'PRESENT' ? 'success' : reg.attendanceStatus === 'ABSENT' ? 'danger' : 'neutral'}>
+                      Attendance: {reg.attendanceStatus || 'NOT_MARKED'}
+                    </Badge>
+                    <Badge variant={reg.certificateStatus === 'ISSUED' || reg.certificateStatus === 'RECEIVED' ? 'info' : 'neutral'}>
+                      Cert: {reg.certificateStatus || 'NOT_ISSUED'}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '0.85rem', fontSize: '0.84rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>Roll Number / Student ID</span>
+                    <code style={{ fontSize: '0.84rem', color: '#F1F5F9', fontWeight: '700' }}>
+                      {reg.rollNumber || reg.student?.studentId || 'N/A'}
+                    </code>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>Branch / Department</span>
+                    <strong style={{ color: '#38BDF8' }}>{reg.department || reg.student?.department || 'N/A'}</strong>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>Academic Year</span>
+                    <span>{reg.year || reg.student?.year || 'N/A'}</span>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>College / Institution</span>
+                    <span>{reg.college || reg.student?.college || 'PBR Visvodaya Institute of Technology & Science'}</span>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>Email Address</span>
+                    <span>{reg.student?.email || reg.email || 'N/A'}</span>
+                  </div>
+
+                  <div>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>Phone Number</span>
+                    <span>{reg.student?.phone || reg.phone || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Team Members (Student 2..N) */}
+              {reg.teamMembers && reg.teamMembers.length > 0 && (
+                <div>
+                  <h4 style={{ fontSize: '0.98rem', fontWeight: '800', marginBottom: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Users size={17} color="var(--accent-cyan)" />
+                    <span>Registered Team Members ({reg.teamMembers.length})</span>
+                  </h4>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+                    {reg.teamMembers.map((member, mIdx) => {
+                      const studentNum = mIdx + 2;
+                      return (
+                        <div
+                          key={mIdx}
+                          style={{
+                            background: 'rgba(255,255,255,0.02)',
+                            borderRadius: '10px',
+                            border: '1px solid var(--border-subtle)',
+                            padding: '1rem 1.15rem',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                              <Badge variant="info">Student {studentNum}</Badge>
+                              <strong style={{ fontSize: '0.95rem' }}>{member.name || `Team Member ${mIdx + 1}`}</strong>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <Badge variant={member.attendanceStatus === 'PRESENT' ? 'success' : member.attendanceStatus === 'ABSENT' ? 'danger' : 'neutral'}>
+                                {member.attendanceStatus || 'NOT_MARKED'}
+                              </Badge>
+                              <Badge variant={member.certificateStatus === 'ISSUED' || member.certificateStatus === 'RECEIVED' ? 'info' : 'neutral'}>
+                                {member.certificateStatus || 'NOT_ISSUED'}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.65rem', fontSize: '0.82rem' }}>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>Roll Number</span>
+                              <code style={{ fontSize: '0.82rem', fontWeight: '700' }}>{member.rollNumber || 'N/A'}</code>
+                            </div>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>Department</span>
+                              <span style={{ color: '#38BDF8' }}>{member.department || reg.department || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>Year</span>
+                              <span>{member.year || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>College</span>
+                              <span>{member.college || reg.college || 'PBR Visvodaya Tech'}</span>
+                            </div>
+                            {member.email && (
+                              <div>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>Email</span>
+                                <span>{member.email}</span>
+                              </div>
+                            )}
+                            {member.phone && (
+                              <div>
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', display: 'block' }}>Phone</span>
+                                <span>{member.phone}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Payment Information Box */}
+              <div
+                style={{
+                  background: 'rgba(255,255,255,0.02)',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border-subtle)',
+                  padding: '1.25rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <CreditCard size={18} color="var(--accent-amber)" />
+                  <h4 style={{ fontSize: '1rem', fontWeight: '800', margin: 0 }}>
+                    Payment & Verification Status
+                  </h4>
+                </div>
+
+                {payment ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.85rem', fontSize: '0.85rem' }}>
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>Status</span>
+                      <Badge variant={payment.status === 'APPROVED' ? 'success' : payment.status === 'REJECTED' ? 'danger' : 'warning'}>
+                        {payment.status}
+                      </Badge>
+                    </div>
+
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>Amount</span>
+                      <strong style={{ color: '#F8FAFC' }}>₹{payment.amount}</strong>
+                    </div>
+
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>Transaction ID / UTR</span>
+                      <code style={{ fontSize: '0.85rem', color: '#F1F5F9' }}>{payment.transactionId}</code>
+                    </div>
+
+                    <div>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', display: 'block' }}>Submitted Date</span>
+                      <span>{new Date(payment.submittedAt || payment.createdAt).toLocaleString()}</span>
+                    </div>
+
+                    {payment.rejectionReason && (
+                      <div style={{ gridColumn: '1 / -1' }}>
+                        <span style={{ color: '#F87171', fontSize: '0.74rem', display: 'block' }}>Rejection Reason</span>
+                        <p style={{ color: '#FCA5A5', margin: '0.2rem 0 0', fontSize: '0.84rem' }}>{payment.rejectionReason}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : isPaidEvent ? (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem', margin: 0 }}>
+                    Fee-based event (₹{ev.fee || 0}), but no payment transaction record was submitted yet.
+                  </p>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10B981', fontSize: '0.88rem' }}>
+                    <CheckCircle2 size={16} />
+                    <span>Free Event Registration — No Payment Required.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
 
 

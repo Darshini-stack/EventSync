@@ -22,6 +22,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { FoundationDashboard } from './pages/FoundationDashboard';
 import { ChatPage } from './pages/ChatPage';
+import { StartupLoader } from './components/StartupLoader';
 import { initSocket } from './services/socket';
 
 // Scroll to top upon route change
@@ -78,6 +79,7 @@ export default function App() {
     <AuthProvider>
       <Router>
         <EventScannerProvider>
+          <StartupLoader />
           <ScrollToTop />
           <div className="app-container">
             <Navbar />
@@ -89,6 +91,7 @@ export default function App() {
               <Route path="/events" element={<EventsPage />} />
               <Route path="/events/:id" element={<EventDetailsPage />} />
               <Route path="/events/:id/register" element={<EventRegistrationPage />} />
+              <Route path="/events/:eventId/register" element={<EventRegistrationPage />} />
               <Route path="/login" element={<StudentLoginPage />} />
               <Route path="/register" element={<StudentRegisterPage />} />
               <Route path="/admin/login" element={<AdminLoginPage />} />

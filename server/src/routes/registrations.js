@@ -4,6 +4,7 @@ const {
   cancelRegistration,
   getMyRegistrations,
   getAdminRegistrations,
+  getRegistrationById,
 } = require('../controllers/registrationController');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 
@@ -23,6 +24,13 @@ router.get(
   authenticateToken,
   requireRole('EVENTADMIN'),
   getAdminRegistrations
+);
+
+// GET /api/registrations/:id - Fetch full details for a registration (Admin or Owner)
+router.get(
+  '/:id',
+  authenticateToken,
+  getRegistrationById
 );
 
 // POST /api/registrations - Create RSVP/Registration (Student only)

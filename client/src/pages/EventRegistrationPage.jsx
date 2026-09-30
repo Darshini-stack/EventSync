@@ -37,14 +37,30 @@ import { EmptyState } from '../components/common/EmptyState';
 import { DigitalEventPassModal } from '../components/DigitalEventPassModal';
 
 const DEPARTMENTS = [
-  'CSE',
-  'AI & ML',
-  'ECE',
-  'EEE',
-  'ME',
-  'Civil',
+  'Artificial Intelligence (AI)',
+  'Computer Science and Engineering (CSE)',
+  'Information Technology (IT)',
+  'Electronics and Communication Engineering (ECE)',
+  'Electrical and Electronics Engineering (EEE)',
+  'Mechanical Engineering (ME)',
+  'Civil Engineering (CE)',
   'Other',
 ];
+
+const normalizeDepartment = (dept) => {
+  if (!dept) return '';
+  const trimmed = String(dept).trim();
+  const direct = DEPARTMENTS.find((d) => d.toLowerCase() === trimmed.toLowerCase());
+  if (direct) return direct;
+  if (/^ai\b/i.test(trimmed) || /artificial/i.test(trimmed)) return 'Artificial Intelligence (AI)';
+  if (/^cse\b/i.test(trimmed) || /computer/i.test(trimmed)) return 'Computer Science and Engineering (CSE)';
+  if (/^it\b/i.test(trimmed) || /information/i.test(trimmed)) return 'Information Technology (IT)';
+  if (/^ece\b/i.test(trimmed) || /electronics and comm/i.test(trimmed)) return 'Electronics and Communication Engineering (ECE)';
+  if (/^eee\b/i.test(trimmed) || /electrical/i.test(trimmed)) return 'Electrical and Electronics Engineering (EEE)';
+  if (/^me\b/i.test(trimmed) || /mechanical/i.test(trimmed)) return 'Mechanical Engineering (ME)';
+  if (/^civil\b/i.test(trimmed) || /^ce\b/i.test(trimmed)) return 'Civil Engineering (CE)';
+  return 'Other';
+};
 
 const YEARS = [
   '1st Year',
@@ -54,7 +70,8 @@ const YEARS = [
 ];
 
 export const EventRegistrationPage = () => {
-  const { id } = useParams();
+  const params = useParams();
+  const id = params.id || params.eventId;
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated, isStudent } = useAuth();
@@ -74,13 +91,17 @@ export const EventRegistrationPage = () => {
   // Clear confirmation modal
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
-  // Registration Form State
+  // Dynamic Registration Form State
+  const [teamSize, setTeamSize] = useState(1);
   const [fullName, setFullName] = useState('');
   const [rollNumber, setRollNumber] = useState('');
+  const [college, setCollege] = useState('');
   const [year, setYear] = useState('');
   const [department, setDepartment] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [teamName, setTeamName] = useState('');
-  const [teamMembers, setTeamMembers] = useState([]); // [{ name, rollNumber, department, year }]
+  const [teamMembers, setTeamMembers] = useState([]); // [{ name, rollNumber, college, department, year, email, phone }]
 
   // Pre-fill student defaults if authenticated
   useEffect(() => {
@@ -88,9 +109,12 @@ export const EventRegistrationPage = () => {
       if (!fullName) setFullName(user.name || '');
       if (!rollNumber) setRollNumber(user.studentId || '');
       if (!year && user.year && YEARS.includes(user.year)) setYear(user.year);
-      if (!department && user.department && DEPARTMENTS.includes(user.department)) {
-        setDepartment(user.department);
+      if (!department && user.department) {
+        setDepartment(normalizeDepartment(user.department));
       }
+      if (!college) setCollege(user.college || 'PBR Visvodaya Institute of Technology & Science');
+      if (!email) setEmail(user.email || '');
+      if (!phone) setPhone(user.phone || '');
     }
   }, [user]);
 
@@ -163,22 +187,32 @@ export const EventRegistrationPage = () => {
     };
   }, [id, loadEvent]);
 
-  // Add team member (Total members including primary <= event.maxTeamSize)
-  const handleAddTeamMember = () => {
-    const maxAllowed = event?.maxTeamSize || 1;
-    if (1 + teamMembers.length >= maxAllowed) return;
-    setTeamMembers((prev) => [
-      ...prev,
-      { name: '', rollNumber: '', department: department || 'CSE', year: year || '1st Year' },
-    ]);
+  // Handle Team Size change (Dynamically generates N student forms)
+  const handleTeamSizeChange = (newSize) => {
+    const maxAllowed = Math.max(1, event?.maxTeamSize || 1);
+    const targetSize = Math.max(1, Math.min(maxAllowed, newSize));
+    setTeamSize(targetSize);
+    setErrorMsg(null);
+    setTeamMembers((prev) => {
+      const neededMembers = targetSize - 1;
+      if (neededMembers <= 0) return [];
+      const updated = [...prev];
+      while (updated.length < neededMembers) {
+        updated.push({
+          name: '',
+          rollNumber: '',
+          college: college || user?.college || 'PBR Visvodaya Institute of Technology & Science',
+          department: department || 'Artificial Intelligence (AI)',
+          year: year || '1st Year',
+          email: '',
+          phone: '',
+        });
+      }
+      return updated.slice(0, neededMembers);
+    });
   };
 
-  // Remove team member
-  const handleRemoveTeamMember = (index) => {
-    setTeamMembers((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  // Update team member field
+  // Update specific team member field
   const handleTeamMemberChange = (index, field, value) => {
     setTeamMembers((prev) => {
       const updated = [...prev];
@@ -189,7 +223,7 @@ export const EventRegistrationPage = () => {
 
   // Clear form logic
   const handleClearClick = () => {
-    const hasData = fullName || rollNumber || year || department || teamName || teamMembers.some((m) => m.name || m.rollNumber);
+    const hasData = fullName || rollNumber || year || department || college || email || phone || teamName || teamMembers.some((m) => m.name || m.rollNumber);
     if (!hasData) {
       resetForm();
     } else {
@@ -198,11 +232,15 @@ export const EventRegistrationPage = () => {
   };
 
   const resetForm = () => {
-    setFullName('');
-    setRollNumber('');
-    setYear('');
-    setDepartment('');
+    setFullName(user?.name || '');
+    setRollNumber(user?.studentId || '');
+    setCollege(user?.college || 'PBR Visvodaya Institute of Technology & Science');
+    setDepartment(normalizeDepartment(user?.department) || '');
+    setYear(user?.year || '');
+    setEmail(user?.email || '');
+    setPhone(user?.phone || '');
     setTeamName('');
+    setTeamSize(1);
     setTeamMembers([]);
     setErrorMsg(null);
     setClearConfirmOpen(false);
@@ -235,48 +273,52 @@ export const EventRegistrationPage = () => {
       return;
     }
 
-    if (!fullName.trim()) {
-      setErrorMsg('Please enter your Full Name.');
+    // 1. Validate Student 1 Details
+    if (!fullName.trim() || fullName.trim().length < 2) {
+      setErrorMsg('Please enter Student 1 Full Name (at least 2 characters).');
       return;
     }
-    if (!rollNumber.trim()) {
-      setErrorMsg('Please enter your Roll Number.');
-      return;
-    }
-    if (!year) {
-      setErrorMsg('Please select your Year.');
+    if (!rollNumber.trim() || rollNumber.trim().length < 2) {
+      setErrorMsg('Please enter Student 1 Roll Number (at least 2 characters).');
       return;
     }
     if (!department) {
-      setErrorMsg('Please select your Department (e.g. AI & ML, CSE).');
+      setErrorMsg('Please select Branch / Department for Student 1.');
+      return;
+    }
+    if (!year) {
+      setErrorMsg('Please select Academic Year for Student 1.');
       return;
     }
 
-    // Filter out completely empty team member rows
-    const cleanedTeamMembers = teamMembers
-      .map((m) => ({
-        name: m.name.trim(),
-        rollNumber: m.rollNumber.trim(),
-        department: m.department || department,
-        year: m.year || year,
-      }))
-      .filter((m) => m.name || m.rollNumber);
-
-    // Validate partial team member rows
-    for (let i = 0; i < cleanedTeamMembers.length; i++) {
-      const tm = cleanedTeamMembers[i];
-      if (!tm.name || !tm.rollNumber) {
-        setErrorMsg(`Team Member ${i + 1} must include both Name and Roll Number.`);
+    // 2. Validate Dynamic Team Members (Student 2..N)
+    for (let i = 0; i < teamMembers.length; i++) {
+      const tm = teamMembers[i];
+      const studentNum = i + 2;
+      if (!tm.name || tm.name.trim().length < 2) {
+        setErrorMsg(`Please enter Full Name for Student ${studentNum}.`);
+        return;
+      }
+      if (!tm.rollNumber || tm.rollNumber.trim().length < 2) {
+        setErrorMsg(`Please enter Roll Number for Student ${studentNum}.`);
+        return;
+      }
+      if (!tm.department) {
+        setErrorMsg(`Please select Branch / Department for Student ${studentNum}.`);
+        return;
+      }
+      if (!tm.year) {
+        setErrorMsg(`Please select Academic Year for Student ${studentNum}.`);
         return;
       }
     }
 
-    // Validate duplicate roll numbers within the same registration
+    // 3. Validate Unique Roll Numbers
     const allRolls = [rollNumber.trim().toUpperCase()];
-    for (let i = 0; i < cleanedTeamMembers.length; i++) {
-      const mRoll = cleanedTeamMembers[i].rollNumber.toUpperCase();
+    for (let i = 0; i < teamMembers.length; i++) {
+      const mRoll = teamMembers[i].rollNumber.trim().toUpperCase();
       if (allRolls.includes(mRoll)) {
-        setErrorMsg(`Duplicate roll number "${cleanedTeamMembers[i].rollNumber}" found. Each team member must have a unique roll number.`);
+        setErrorMsg(`Duplicate roll number "${teamMembers[i].rollNumber.trim()}" found. Each participant must have a unique roll number.`);
         return;
       }
       allRolls.push(mRoll);
@@ -286,16 +328,26 @@ export const EventRegistrationPage = () => {
     setErrorMsg(null);
 
     try {
-      const totalTeamSize = 1 + cleanedTeamMembers.length;
       const payload = {
         eventId: id,
         fullName: fullName.trim(),
         rollNumber: rollNumber.trim(),
+        college: college.trim(),
         year,
         department,
-        teamSize: totalTeamSize,
-        teamName: totalTeamSize > 1 ? (teamName.trim() || `Team ${fullName.trim()}`) : '',
-        teamMembers: cleanedTeamMembers,
+        email: email.trim(),
+        phone: phone.trim(),
+        teamSize,
+        teamName: teamSize > 1 ? (teamName.trim() || `Team ${fullName.trim()}`) : '',
+        teamMembers: teamMembers.map((m) => ({
+          name: m.name.trim(),
+          rollNumber: m.rollNumber.trim(),
+          college: m.college ? m.college.trim() : (college.trim() || ''),
+          department: m.department || department,
+          year: m.year || year,
+          email: m.email ? m.email.trim() : '',
+          phone: m.phone ? m.phone.trim() : '',
+        })),
       };
 
       const res = await registerForEvent(id, payload);
@@ -315,7 +367,6 @@ export const EventRegistrationPage = () => {
       }
     } catch (err) {
       setErrorMsg('A network error occurred while submitting your registration.');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -374,7 +425,7 @@ export const EventRegistrationPage = () => {
   const maxTeamMembers = event.maxTeamSize || 1;
 
   return (
-    <div style={{ maxWidth: '820px', margin: '2rem auto', width: '100%', padding: '0 1rem', display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+    <div className="registration-container">
       {/* Navigation Breadcrumb */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Link
@@ -638,83 +689,155 @@ export const EventRegistrationPage = () => {
           </Link>
         </div>
       ) : (
-        /* STATE 4: THE REGISTRATION FORM (Section 2, 3, 4) */
+        /* STATE 4: THE DYNAMIC REGISTRATION FORM (Requirement 2, 3, 4) */
         <form onSubmit={handleSubmit} className="glass-panel" style={{ padding: '2rem', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
-          {/* Section: Personal Details */}
+          {/* SECTION A: TEAM SIZE / NUMBER OF STUDENTS SELECTOR */}
           <div>
-            <h3 style={{ fontSize: '1.15rem', fontWeight: '800', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Sparkles size={18} color="var(--accent-primary)" />
-              <span>Personal Details</span>
-            </h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
-              You are the Team Leader submitting this event registration.
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Users size={18} color="var(--accent-primary)" />
+                <span>Registration Details & Team Size</span>
+              </h3>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Maximum Team Size: <strong style={{ color: 'var(--text-primary)' }}>{maxTeamMembers}</strong> {maxTeamMembers === 1 ? 'student' : 'students'}
+              </span>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.84rem', marginBottom: '1rem' }}>
+              {maxTeamMembers > 1
+                ? `Select the total number of students in your team (1 to ${maxTeamMembers}). The form will automatically generate detail sections for each student.`
+                : 'Individual event registration. Please confirm your student details below.'}
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '1.25rem' }}>
-              {/* Full Name */}
-              <div>
+            {maxTeamMembers > 1 && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-primary)' }}>
+                  Number of Students Participating <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                </label>
+                <div className="team-size-selector-wrap">
+                  {Array.from({ length: maxTeamMembers }, (_, i) => i + 1).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      className={`team-size-pill ${teamSize === s ? 'active' : ''}`}
+                      onClick={() => handleTeamSizeChange(s)}
+                    >
+                      {s === 1 ? '1 Student (Individual)' : `${s} Students`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Optional Team Name (shown when team size > 1) */}
+            {teamSize > 1 && (
+              <div style={{ marginBottom: '0.5rem' }}>
                 <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: '700', marginBottom: '0.4rem' }}>
-                  Full Name <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                  Team Name (Optional)
                 </label>
                 <input
                   type="text"
+                  className="form-input"
+                  value={teamName}
+                  onChange={(e) => setTeamName(e.target.value)}
+                  placeholder="e.g. AI Innovators, Code Warriors"
+                />
+              </div>
+            )}
+          </div>
+
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '0.25rem 0' }} />
+
+          {/* SECTION B: STUDENT 1 (PRIMARY CONTACT / TEAM LEADER) */}
+          <div className="student-section-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.65rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <Badge variant="primary" style={{ fontWeight: '800', fontSize: '0.78rem' }}>
+                  Student 1
+                </Badge>
+                <span style={{ fontWeight: '700', fontSize: '0.98rem' }}>
+                  {teamSize > 1 ? 'Team Leader / Primary Contact' : 'Individual Participant'}
+                </span>
+              </div>
+              <span style={{ fontSize: '0.74rem', color: 'var(--accent-cyan)', fontWeight: '600' }}>
+                Primary RSVP
+              </span>
+            </div>
+
+            <div className="form-grid-2col">
+              {/* Student 1 Full Name */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                  Student Name <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Enter your full name"
+                  placeholder="Enter full name"
                   required
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 0.9rem',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-subtle)',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.9rem',
-                  }}
                 />
               </div>
 
-              {/* Roll Number */}
+              {/* Student 1 Roll Number */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: '700', marginBottom: '0.4rem' }}>
-                  Roll Number <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                  Roll Number / Student ID <span style={{ color: 'var(--accent-rose)' }}>*</span>
                 </label>
                 <input
                   type="text"
+                  className="form-input"
                   value={rollNumber}
                   onChange={(e) => setRollNumber(e.target.value)}
                   placeholder="e.g. 2473A05153"
                   required
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 0.9rem',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-subtle)',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.9rem',
-                  }}
                 />
               </div>
 
-              {/* Year */}
+              {/* Student 1 College / Institution */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: '700', marginBottom: '0.4rem' }}>
-                  Year <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                  College / Institution
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={college}
+                  onChange={(e) => setCollege(e.target.value)}
+                  placeholder="e.g. PBR Visvodaya Institute of Technology & Science"
+                />
+              </div>
+
+              {/* Student 1 Branch / Department */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                  Branch / Department <span style={{ color: 'var(--accent-rose)' }}>*</span>
                 </label>
                 <select
+                  className="form-input"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  required
+                >
+                  <option value="">Select Branch / Department</option>
+                  {DEPARTMENTS.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Student 1 Academic Year */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                  Academic Year <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                </label>
+                <select
+                  className="form-input"
                   value={year}
                   onChange={(e) => setYear(e.target.value)}
                   required
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 0.9rem',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-subtle)',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.9rem',
-                  }}
                 >
                   <option value="">Select Year</option>
                   {YEARS.map((y) => (
@@ -725,204 +848,180 @@ export const EventRegistrationPage = () => {
                 </select>
               </div>
 
-              {/* Department (Includes AI & ML as a separate first-class option) */}
+              {/* Student 1 Contact Email */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: '700', marginBottom: '0.4rem' }}>
-                  Department <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                  Email Address
                 </label>
-                <select
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 0.9rem',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-subtle)',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.9rem',
-                  }}
-                >
-                  <option value="">Select Department</option>
-                  {DEPARTMENTS.map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept}
-                    </option>
-                  ))}
-                </select>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="student@college.edu"
+                />
+              </div>
+
+              {/* Student 1 Phone Number */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  className="form-input"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="e.g. 9876543210"
+                />
               </div>
             </div>
           </div>
 
-          <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '0.5rem 0' }} />
-
-          {/* Section: Team Details (Dynamic based on event.maxTeamSize) */}
-          {maxTeamMembers > 1 && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                <h3 style={{ fontSize: '1.15rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Users size={18} color="var(--accent-secondary)" />
-                  <span>Team Details (Optional)</span>
-                </h3>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Max Team Size: <strong>{maxTeamMembers}</strong> (including Team Leader)
-                </span>
-              </div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginBottom: '1.25rem' }}>
-                You can participate individually or add up to {maxTeamMembers - 1} additional team members.
-              </p>
-
-              {/* Optional Team Name */}
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: '700', marginBottom: '0.4rem' }}>
-                  Team Name (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="e.g. Code Warriors, AI Innovators"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 0.9rem',
-                    borderRadius: '8px',
-                    border: '1px solid var(--border-subtle)',
-                    background: 'var(--bg-tertiary)',
-                    color: 'var(--text-primary)',
-                    fontSize: '0.9rem',
-                  }}
-                />
-              </div>
-
-              {teamMembers.length === 0 ? (
-                <div style={{ background: 'var(--bg-tertiary)', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.86rem' }}>
-                  Participating individually. (Click below if you want to add team members)
+          {/* SECTION C: DYNAMIC TEAM MEMBERS (Student 2, Student 3, ... Student N) */}
+          {teamMembers.map((member, idx) => {
+            const studentNumber = idx + 2;
+            return (
+              <div key={idx} className="student-section-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.65rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <Badge variant="info" style={{ fontWeight: '800', fontSize: '0.78rem' }}>
+                      Student {studentNumber}
+                    </Badge>
+                    <span style={{ fontWeight: '700', fontSize: '0.98rem' }}>
+                      Team Member {idx + 1} Details
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                    Team Member
+                  </span>
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-                  {teamMembers.map((member, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        background: 'var(--bg-tertiary)',
-                        border: '1px solid var(--border-subtle)',
-                        padding: '1rem',
-                        borderRadius: '10px',
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr)) 42px',
-                        gap: '0.85rem',
-                        alignItems: 'flex-end',
-                      }}
+
+                <div className="form-grid-2col">
+                  {/* Student Name */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                      Student Name <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={member.name}
+                      onChange={(e) => handleTeamMemberChange(idx, 'name', e.target.value)}
+                      placeholder={`Enter student ${studentNumber} full name`}
+                      required
+                    />
+                  </div>
+
+                  {/* Roll Number */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                      Roll Number / Student ID <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={member.rollNumber}
+                      onChange={(e) => handleTeamMemberChange(idx, 'rollNumber', e.target.value)}
+                      placeholder={`e.g. 2473A0515${4 + idx}`}
+                      required
+                    />
+                  </div>
+
+                  {/* College / Institution */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                      College / Institution
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={member.college !== undefined ? member.college : college}
+                      onChange={(e) => handleTeamMemberChange(idx, 'college', e.target.value)}
+                      placeholder="e.g. PBR Visvodaya Institute of Technology & Science"
+                    />
+                  </div>
+
+                  {/* Branch / Department */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                      Branch / Department <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                    </label>
+                    <select
+                      className="form-input"
+                      value={member.department || department || 'Artificial Intelligence (AI)'}
+                      onChange={(e) => handleTeamMemberChange(idx, 'department', e.target.value)}
+                      required
                     >
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', marginBottom: '0.3rem' }}>
-                          Team Member {idx + 1} Name <span style={{ color: 'var(--accent-rose)' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={member.name}
-                          onChange={(e) => handleTeamMemberChange(idx, 'name', e.target.value)}
-                          placeholder="Enter member's full name"
-                          style={{
-                            width: '100%',
-                            padding: '0.65rem 0.8rem',
-                            borderRadius: '6px',
-                            border: '1px solid var(--border-subtle)',
-                            background: 'var(--bg-secondary)',
-                            color: 'var(--text-primary)',
-                            fontSize: '0.86rem',
-                          }}
-                        />
-                      </div>
+                      <option value="">Select Branch / Department</option>
+                      {DEPARTMENTS.map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', marginBottom: '0.3rem' }}>
-                          Roll Number <span style={{ color: 'var(--accent-rose)' }}>*</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={member.rollNumber}
-                          onChange={(e) => handleTeamMemberChange(idx, 'rollNumber', e.target.value)}
-                          placeholder="e.g. 2473A05154"
-                          style={{
-                            width: '100%',
-                            padding: '0.65rem 0.8rem',
-                            borderRadius: '6px',
-                            border: '1px solid var(--border-subtle)',
-                            background: 'var(--bg-secondary)',
-                            color: 'var(--text-primary)',
-                            fontSize: '0.86rem',
-                          }}
-                        />
-                      </div>
+                  {/* Academic Year */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                      Academic Year <span style={{ color: 'var(--accent-rose)' }}>*</span>
+                    </label>
+                    <select
+                      className="form-input"
+                      value={member.year || year || '1st Year'}
+                      onChange={(e) => handleTeamMemberChange(idx, 'year', e.target.value)}
+                      required
+                    >
+                      <option value="">Select Year</option>
+                      {YEARS.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                      <div>
-                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '700', marginBottom: '0.3rem' }}>
-                          Department
-                        </label>
-                        <select
-                          value={member.department || department || 'CSE'}
-                          onChange={(e) => handleTeamMemberChange(idx, 'department', e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '0.65rem 0.8rem',
-                            borderRadius: '6px',
-                            border: '1px solid var(--border-subtle)',
-                            background: 'var(--bg-secondary)',
-                            color: 'var(--text-primary)',
-                            fontSize: '0.86rem',
-                          }}
-                        >
-                          {DEPARTMENTS.map((dept) => (
-                            <option key={dept} value={dept}>
-                              {dept}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                  {/* Email */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                      Email Address (Optional)
+                    </label>
+                    <input
+                      type="email"
+                      className="form-input"
+                      value={member.email || ''}
+                      onChange={(e) => handleTeamMemberChange(idx, 'email', e.target.value)}
+                      placeholder={`member${idx + 1}@college.edu`}
+                    />
+                  </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTeamMember(idx)}
-                        title="Remove Member"
-                        style={{
-                          height: '38px',
-                          width: '38px',
-                          borderRadius: '6px',
-                          border: '1px solid rgba(239, 68, 68, 0.4)',
-                          background: 'rgba(239, 68, 68, 0.1)',
-                          color: '#EF4444',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))}
+                  {/* Phone */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: '700', marginBottom: '0.35rem' }}>
+                      Phone Number (Optional)
+                    </label>
+                    <input
+                      type="tel"
+                      className="form-input"
+                      value={member.phone || ''}
+                      onChange={(e) => handleTeamMemberChange(idx, 'phone', e.target.value)}
+                      placeholder="e.g. 9876543211"
+                    />
+                  </div>
                 </div>
-              )}
+              </div>
+            );
+          })}
 
-              {1 + teamMembers.length < maxTeamMembers && (
-                <div style={{ marginTop: '0.85rem' }}>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    icon={Plus}
-                    onClick={handleAddTeamMember}
-                  >
-                    Add Team Member ({1 + teamMembers.length}/{maxTeamMembers})
-                  </Button>
-                </div>
-              )}
-            </div>
+          {/* Validation Alert (Prominently visible directly above submit buttons) */}
+          {errorMsg && (
+            <Alert variant="error" onDismiss={() => setErrorMsg(null)}>
+              {errorMsg}
+            </Alert>
           )}
 
-          <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '0.5rem 0' }} />
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '0.25rem 0' }} />
 
           {/* Form Actions: Submit & Clear */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
@@ -942,9 +1041,9 @@ export const EventRegistrationPage = () => {
               size="lg"
               loading={submitting}
               icon={CheckCircle2}
-              style={{ minWidth: '200px' }}
+              style={{ minWidth: '220px' }}
             >
-              Submit Registration
+              {teamSize === 1 ? 'Submit Registration' : `Submit Registration (${teamSize} Students)`}
             </Button>
           </div>
         </form>

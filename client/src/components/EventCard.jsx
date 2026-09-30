@@ -11,7 +11,8 @@ export const EventCard = ({ event }) => {
   const availableSeats = event.availableSeats;
   const capacity = event.capacity;
   const percentageSeatsClaimed = capacity > 0 ? Math.min(100, Math.max(0, Math.round(((capacity - availableSeats) / capacity) * 100))) : 0;
-  const hasPoster = Boolean(event.poster && event.poster.filename);
+  const hasPoster = Boolean(event.poster && (event.poster.filename || event.poster.url || (typeof event.poster === 'string' && event.poster.length > 5)));
+  const [posterFailed, setPosterFailed] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -22,7 +23,10 @@ export const EventCard = ({ event }) => {
         : event.date)
     : 'TBA';
 
-  const defaultGradient = 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)';
+  const defaultGradient = 'linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%)';
+
+  const totalPrize = Number(event.prizeMoney) || 
+    ((Number(event.firstPrize) || 0) + (Number(event.secondPrize) || 0) + (Number(event.thirdPrize) || 0));
 
   return (
     <div className="glass-panel event-card">
@@ -33,87 +37,119 @@ export const EventCard = ({ event }) => {
           background: event.gradient || defaultGradient,
           position: 'relative',
           overflow: 'hidden',
+          height: '160px',
         }}
       >
-        {hasPoster ? (
+        {hasPoster && !posterFailed ? (
           <img
             src={getEventPosterUrl(eventId)}
             alt={event.title}
+            onError={() => setPosterFailed(true)}
             style={{
               position: 'absolute',
               inset: 0,
               width: '100%',
               height: '100%',
               objectFit: 'cover',
+              objectPosition: 'center',
             }}
           />
         ) : (
           <div
             style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '50%',
-              background: 'rgba(255, 255, 255, 0.2)',
-              backdropFilter: 'blur(8px)',
+              position: 'absolute',
+              inset: 0,
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+              background: event.gradient || 'linear-gradient(135deg, #1E1B4B 0%, #2E1065 60%, #3B0764 100%)',
+              padding: '1rem',
+              textAlign: 'center',
             }}
           >
-            <Calendar size={28} />
+            <div
+              style={{
+                width: '46px',
+                height: '46px',
+                borderRadius: '50%',
+                background: 'rgba(255, 255, 255, 0.15)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '0.45rem',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+              }}
+            >
+              <Sparkles size={22} style={{ color: '#FCD34D' }} />
+            </div>
+            <span
+              style={{
+                fontSize: '0.72rem',
+                fontWeight: '700',
+                letterSpacing: '0.06em',
+                color: 'rgba(255, 255, 255, 0.95)',
+                textTransform: 'uppercase',
+                textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+              }}
+            >
+              {event.category || 'EventSync Event'}
+            </span>
           </div>
         )}
 
         {/* Badges Overlay */}
-        <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '0.5rem', zIndex: 2 }}>
+        <div style={{ position: 'absolute', top: '10px', left: '10px', display: 'flex', flexWrap: 'wrap', gap: '0.4rem', zIndex: 2 }}>
           <span
             style={{
-              padding: '0.25rem 0.65rem',
+              padding: '0.2rem 0.55rem',
               borderRadius: 'var(--radius-full)',
-              background: 'rgba(0, 0, 0, 0.55)',
+              background: 'rgba(0, 0, 0, 0.65)',
               backdropFilter: 'blur(8px)',
-              fontSize: '0.74rem',
+              fontSize: '0.72rem',
               fontWeight: '600',
               color: 'white',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
+              border: '1px solid rgba(255, 255, 255, 0.25)',
             }}
           >
             {event.category || 'General'}
           </span>
           <span
             style={{
-              padding: '0.25rem 0.65rem',
+              padding: '0.2rem 0.55rem',
               borderRadius: 'var(--radius-full)',
               background: 'rgba(16, 185, 129, 0.95)',
-              fontSize: '0.74rem',
+              fontSize: '0.72rem',
               fontWeight: '700',
               color: 'white',
             }}
           >
-            FREE
+            {event.isPaid && event.fee > 0 ? `₹${event.fee}` : 'FREE'}
           </span>
-          {event.prizeMoney > 0 && (
+          {totalPrize > 0 && (
             <span
               style={{
-                padding: '0.25rem 0.65rem',
+                padding: '0.2rem 0.55rem',
                 borderRadius: 'var(--radius-full)',
                 background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
-                fontSize: '0.74rem',
+                fontSize: '0.72rem',
                 fontWeight: '700',
                 color: 'white',
+                boxShadow: '0 2px 6px rgba(217, 119, 6, 0.4)',
               }}
             >
-              ₹{Number(event.prizeMoney).toLocaleString('en-IN')}
+              🏆 ₹{Number(totalPrize).toLocaleString('en-IN')}
             </span>
           )}
           {event.participationCertificateAvailable !== false && (
             <span
               style={{
-                padding: '0.25rem 0.65rem',
+                padding: '0.2rem 0.55rem',
                 borderRadius: 'var(--radius-full)',
                 background: 'rgba(99, 102, 241, 0.85)',
-                fontSize: '0.74rem',
+                fontSize: '0.72rem',
                 fontWeight: '600',
                 color: 'white',
               }}
@@ -126,10 +162,43 @@ export const EventCard = ({ event }) => {
 
       {/* Card Content Body */}
       <div className="event-card-body">
-        <div style={{ marginBottom: '0.45rem' }}>
+        <div style={{ marginBottom: '0.35rem' }}>
           <EventCountdown event={event} variant="compact" />
         </div>
         <h3 className="event-title">{event.title}</h3>
+
+        {/* 3 Prizes Breakdown (1st, 2nd, 3rd) */}
+        {(event.firstPrize > 0 || event.secondPrize > 0 || event.thirdPrize > 0) && (
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.35rem',
+              flexWrap: 'wrap',
+              margin: '0.2rem 0',
+              padding: '0.35rem 0.6rem',
+              background: 'rgba(245, 158, 11, 0.08)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+              fontSize: '0.73rem',
+            }}
+          >
+            {event.firstPrize > 0 && (
+              <span style={{ color: '#FCD34D', fontWeight: '700' }}>
+                🥇 1st: ₹{Number(event.firstPrize).toLocaleString('en-IN')}
+              </span>
+            )}
+            {event.secondPrize > 0 && (
+              <span style={{ color: '#E2E8F0', fontWeight: '600' }}>
+                🥈 2nd: ₹{Number(event.secondPrize).toLocaleString('en-IN')}
+              </span>
+            )}
+            {event.thirdPrize > 0 && (
+              <span style={{ color: '#FB923C', fontWeight: '600' }}>
+                🥉 3rd: ₹{Number(event.thirdPrize).toLocaleString('en-IN')}
+              </span>
+            )}
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', margin: '0.25rem 0' }}>
           <div className="event-meta-row">

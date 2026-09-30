@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Bell,
@@ -32,8 +32,28 @@ export const NotificationBell = () => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [isBlinking, setIsBlinking] = useState(false);
+  const blinkTimerRef = useRef(null);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+
+  const triggerBlink = useCallback(() => {
+    setIsBlinking(true);
+    if (blinkTimerRef.current) {
+      clearTimeout(blinkTimerRef.current);
+    }
+    blinkTimerRef.current = setTimeout(() => {
+      setIsBlinking(false);
+    }, 2000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (blinkTimerRef.current) {
+        clearTimeout(blinkTimerRef.current);
+      }
+    };
+  }, []);
 
   // Helper to get relative time string
   const formatTimeAgo = (dateStr) => {
@@ -248,6 +268,7 @@ export const NotificationBell = () => {
       setNotifications((prev) => {
         if (prev.some((n) => n._id === newNotif._id)) return prev;
         setUnreadCount((c) => c + 1);
+        triggerBlink();
         return [newNotif, ...prev.slice(0, 8)];
       });
     };
@@ -308,7 +329,7 @@ export const NotificationBell = () => {
       {/* Bell Button */}
       <button
         id="notification-bell-btn"
-        className="notification-bell-button"
+        className={`notification-bell-button ${isBlinking ? 'notification-bell-blink' : ''}`}
         onClick={handleToggle}
         aria-label="Notifications"
         style={{
@@ -319,15 +340,19 @@ export const NotificationBell = () => {
           width: '38px',
           height: '38px',
           borderRadius: '50%',
-          background: isOpen ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+          background: isBlinking
+            ? 'rgba(99, 102, 241, 0.35)'
+            : (isOpen ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255, 255, 255, 0.06)'),
           border: '1px solid',
-          borderColor: isOpen ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.12)',
-          color: isOpen ? 'var(--text-primary)' : 'var(--text-secondary)',
+          borderColor: isBlinking
+            ? '#818CF8'
+            : (isOpen ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.12)'),
+          color: isBlinking ? '#FFFFFF' : (isOpen ? 'var(--text-primary)' : 'var(--text-secondary)'),
           cursor: 'pointer',
           transition: 'all var(--transition-fast)',
         }}
       >
-        <Bell size={18} />
+        <Bell size={18} className={isBlinking ? 'notification-icon-shake' : ''} />
         {unreadCount > 0 && (
           <span
             id="notification-unread-badge"

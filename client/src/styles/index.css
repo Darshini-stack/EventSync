@@ -225,7 +225,7 @@ button {
   border: 1px solid var(--border-subtle);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 980px) {
   .nav-links-desktop, .nav-actions-desktop {
     display: none;
   }
@@ -233,6 +233,8 @@ button {
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 42px;
+    min-height: 42px;
   }
 }
 
@@ -243,6 +245,9 @@ button {
   border-bottom: 1px solid var(--border-subtle);
   padding: 1.25rem 1.5rem;
   gap: 1rem;
+  max-height: calc(100vh - 65px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .mobile-drawer.open {
@@ -421,6 +426,28 @@ button {
   100% { opacity: 0.4; }
 }
 
+/* Startup App Animation */
+@keyframes startupPopIn {
+  0% { transform: scale(0.88); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes startupBarFill {
+  0% { width: 0%; }
+  100% { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startup-loader-backdrop {
+    display: none !important;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Hero Section */
 .hero-container {
   padding: 4.5rem 2rem 3.5rem;
@@ -512,7 +539,7 @@ button {
 /* Feature Grid */
 .features-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 1.5rem;
   margin-top: 2rem;
 }
@@ -602,7 +629,7 @@ button {
 /* Steps Flow */
 .steps-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 1.5rem;
   margin-top: 2rem;
 }
@@ -626,7 +653,7 @@ button {
 /* Role Entry */
 .role-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 1.75rem;
   margin-top: 2rem;
 }
@@ -791,7 +818,278 @@ button {
   .chat-floating-window {
     bottom: 12px !important;
     right: 12px !important;
-    width: min(92vw, 420px) !important;
+    width: min(94vw, 420px) !important;
     max-height: calc(100vh - 24px) !important;
   }
 }
+
+/* Responsive Grid Cards System */
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  width: 100%;
+}
+
+@media (min-width: 1024px) {
+  .grid-cards {
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .grid-cards {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
+/* Table Responsive Container */
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 1rem;
+  border-radius: var(--radius-md);
+}
+
+/* Global Mobile Form Controls & Touch Target Optimizations */
+@media (max-width: 768px) {
+  .btn {
+    min-height: 40px;
+    touch-action: manipulation;
+  }
+  .form-input {
+    font-size: 16px; /* Prevents auto-zoom in mobile safari */
+    min-height: 44px;
+  }
+}
+
+/* Dynamic Event Registration Form Styles */
+.registration-container {
+  max-width: 820px;
+  margin: 2rem auto;
+  width: 100%;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+@media (max-width: 640px) {
+  .registration-container {
+    margin: 1rem auto;
+    padding: 0 0.5rem;
+    gap: 1.25rem;
+  }
+}
+
+.student-section-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: relative;
+  transition: border-color var(--transition-normal);
+}
+
+.student-section-card:hover {
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+@media (max-width: 640px) {
+  .student-section-card {
+    padding: 1rem 1rem;
+    border-radius: var(--radius-md);
+  }
+}
+
+.team-size-selector-wrap {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.team-size-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-full);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  user-select: none;
+  min-height: 40px;
+}
+
+.team-size-pill.active {
+  background: var(--gradient-brand);
+  color: #FFFFFF;
+  border-color: transparent;
+  box-shadow: 0 0 16px rgba(99, 102, 241, 0.4);
+}
+
+.team-size-pill:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.form-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .form-grid-2col {
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
+  }
+}
+
+/* Welcome Screen Entrance Animation & Styling (Requirement 1) */
+@keyframes welcomeEntrance {
+  0% {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.welcome-screen-animate {
+  animation: welcomeEntrance 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-screen-animate {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+.welcome-hero-card {
+  padding: 3.5rem 2.5rem;
+  border-radius: var(--radius-xl);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.15) 0%, rgba(17, 24, 39, 0.85) 75%);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.6), 0 0 30px rgba(99, 102, 241, 0.15);
+}
+
+@media (max-width: 640px) {
+  .welcome-hero-card {
+    padding: 2.25rem 1.25rem;
+  }
+}
+
+.welcome-logo-badge {
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: var(--gradient-brand);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  box-shadow: 0 0 25px rgba(99, 102, 241, 0.5);
+  margin-bottom: 1.5rem;
+  animation: logoPulse 3s ease-in-out infinite alternate;
+}
+
+@keyframes logoPulse {
+  0% {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+    transform: scale(1);
+  }
+  100% {
+    box-shadow: 0 0 32px rgba(139, 92, 246, 0.65);
+    transform: scale(1.03);
+  }
+}
+
+.welcome-actions-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+
+@media (max-width: 640px) {
+  .welcome-actions-row {
+    flex-direction: column;
+    width: 100%;
+  }
+  .welcome-actions-row > * {
+    width: 100%;
+  }
+  .welcome-actions-row button {
+    width: 100%;
+  }
+}
+
+/* Subtle, Professional 2-second Notification Bell Blink & Pulse Animation */
+@keyframes bellPulseGlow {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+  }
+  30% {
+    transform: scale(1.12);
+    box-shadow: 0 0 16px 4px rgba(129, 140, 248, 0.85);
+  }
+  70% {
+    transform: scale(1.06);
+    box-shadow: 0 0 10px 2px rgba(99, 102, 241, 0.5);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+  }
+}
+
+@keyframes bellIconShake {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-14deg);
+  }
+  40% {
+    transform: rotate(14deg);
+  }
+  60% {
+    transform: rotate(-8deg);
+  }
+  80% {
+    transform: rotate(8deg);
+  }
+}
+
+.notification-bell-blink {
+  animation: bellPulseGlow 0.65s ease-in-out infinite !important;
+}
+
+.notification-icon-shake {
+  animation: bellIconShake 0.45s ease-in-out infinite !important;
+  color: #FCD34D !important;
+}
+

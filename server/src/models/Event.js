@@ -90,6 +90,21 @@ const eventSchema = new mongoose.Schema(
       default: 0,
       min: [0, 'Prize money cannot be negative'],
     },
+    firstPrize: {
+      type: Number,
+      default: 0,
+      min: [0, 'First prize cannot be negative'],
+    },
+    secondPrize: {
+      type: Number,
+      default: 0,
+      min: [0, 'Second prize cannot be negative'],
+    },
+    thirdPrize: {
+      type: Number,
+      default: 0,
+      min: [0, 'Third prize cannot be negative'],
+    },
     participationCertificateAvailable: {
       type: Boolean,
       default: true,

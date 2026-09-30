@@ -3,13 +3,24 @@ import { getPublicAppUrl, getEventRegistrationUrl } from '../utils/url';
 export { getPublicAppUrl, getEventRegistrationUrl };
 
 export const getApiBaseUrl = () => {
+  // When developing or testing locally on localhost or LAN, use the Vite proxy (/api -> local backend)
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.') ||
+      window.location.hostname.startsWith('10.'))
+  ) {
+    return '/api';
+  }
+
   const envUrl = import.meta.env.VITE_API_URL;
-  // If explicitly configured with a non-localhost URL (e.g. deployed production backend), use it directly
+  // If explicitly configured with a non-localhost URL (e.g. deployed production backend on Vercel), use it directly
   if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
     return envUrl;
   }
 
-  // When running in the browser, leverage the Vite proxy (/api -> backend) for seamless localhost and LAN access
+  // When running in the browser, leverage the Vite proxy (/api -> backend)
   if (typeof window !== 'undefined') {
     return '/api';
   }
@@ -220,6 +231,11 @@ export const fetchMyRegistrations = async () => {
 export const fetchAdminRegistrations = async (eventId = null) => {
   const query = eventId ? `?eventId=${eventId}` : '';
   return request(`/registrations/admin${query}`, { method: 'GET' });
+};
+
+// GET /api/registrations/:id (Fetch single registration details for admin/student)
+export const fetchRegistrationById = async (id) => {
+  return request(`/registrations/${id}`, { method: 'GET' });
 };
 
 // --- DIGITAL EVENT PASSES (FORMER TICKETS) APIS ---

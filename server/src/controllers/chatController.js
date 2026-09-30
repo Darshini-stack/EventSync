@@ -232,6 +232,9 @@ const handleChatMessage = async (req, res, next) => {
           category: ev.category,
           mode: ev.mode || 'Offline',
           prizeMoney: ev.prizeMoney !== undefined ? ev.prizeMoney : 0,
+          firstPrize: ev.firstPrize || 0,
+          secondPrize: ev.secondPrize || 0,
+          thirdPrize: ev.thirdPrize || 0,
           participationCertificateAvailable: ev.participationCertificateAvailable !== false,
           facultyCoordinatorName: ev.facultyCoordinatorName || '',
           coordinators: (ev.coordinators || []).map((c) => ({

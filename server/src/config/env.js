@@ -12,7 +12,7 @@ const config = {
   jwtSecret: process.env.JWT_SECRET,
   adminAccessCode: process.env.ADMIN_ACCESS_CODE,
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
-  publicAppUrl: process.env.PUBLIC_APP_URL || null,
+  publicAppUrl: process.env.PUBLIC_APP_URL || process.env.CLIENT_URL || null,
   almostFullThreshold: parseInt(process.env.NOTIFICATION_ALMOST_FULL_THRESHOLD, 10) || 5,
 };
 

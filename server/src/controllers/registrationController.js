@@ -19,7 +19,25 @@ const emitSocketEvent = (eventName, payload) => {
 };
 
 const ALLOWED_YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
-const ALLOWED_DEPARTMENTS = ['CSE', 'AI & ML', 'ECE', 'EEE', 'ME', 'Civil', 'Other'];
+const ALLOWED_DEPARTMENTS = [
+  'Artificial Intelligence (AI)',
+  'Computer Science and Engineering (CSE)',
+  'Information Technology (IT)',
+  'Electronics and Communication Engineering (ECE)',
+  'Electrical and Electronics Engineering (EEE)',
+  'Mechanical Engineering (ME)',
+  'Civil Engineering (CE)',
+  'AI',
+  'AI & ML',
+  'CSE',
+  'IT',
+  'ECE',
+  'EEE',
+  'ME',
+  'Civil',
+  'CE',
+  'Other',
+];
 
 /**
  * POST /api/registrations
@@ -217,11 +235,18 @@ const createRegistration = async (req, res, next) => {
         }
         seenRollNumbers.add(upperRoll);
 
+        const tmCollege = String(tm.college || req.body.college || req.user?.college || '').trim();
+        const tmEmail = String(tm.email || '').trim();
+        const tmPhone = String(tm.phone || '').trim();
+
         validTeamMembers.push({
           name: tmName,
           rollNumber: tmRoll,
           department: tmDept,
           year: tmYear,
+          college: tmCollege,
+          email: tmEmail,
+          phone: tmPhone,
           attendanceStatus: 'NOT_MARKED',
           certificateStatus: 'NOT_ISSUED',
         });
@@ -232,6 +257,7 @@ const createRegistration = async (req, res, next) => {
 
     const contactEmail = req.body.email ? String(req.body.email).trim() : (req.user?.email || '');
     const contactPhone = req.body.phone ? String(req.body.phone).trim() : (req.user?.phone || '');
+    const studentCollege = req.body.college ? String(req.body.college).trim() : (req.user?.college || '');
     const teamName = req.body.teamName ? String(req.body.teamName).trim() : '';
 
     // 6. Concurrency-Safe Atomic Seat Allocation:
@@ -288,6 +314,7 @@ const createRegistration = async (req, res, next) => {
         rollNumber: trimmedRollNumber,
         year: selectedYear,
         department: selectedDepartment,
+        college: studentCollege,
         email: contactEmail,
         phone: contactPhone,
         teamSize: parsedTeamSize,
@@ -693,9 +720,108 @@ const getAdminRegistrations = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/registrations/:id
+ * Protected (EVENTADMIN or owner STUDENT):
+ * Returns complete registration details including event, student, team members,
+ * payment proof/status, ticket/pass code, attendance, and certificates.
+ */
+const getRegistrationById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid registration ID format.',
+      });
+    }
+
+    const reg = await Registration.findById(id)
+      .populate('event')
+      .populate('student', 'name email studentId department year phone college')
+      .lean();
+
+    if (!reg) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found.',
+      });
+    }
+
+    // Role-based authorization: EventAdmin can view any, Student can view only own
+    const isOwner = reg.student && String(reg.student._id || reg.student) === String(req.user.id);
+    const isAdmin = req.user.role === 'EVENTADMIN';
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized to view details for this registration.',
+      });
+    }
+
+    // Associated Payment (if any)
+    let payment = null;
+    try {
+      const Payment = require('../models/Payment');
+      payment = await Payment.findOne({
+        $or: [
+          { registration: reg._id },
+          { event: reg.event?._id, student: reg.student?._id || reg.student },
+        ],
+      }).lean();
+    } catch (e) {
+      console.warn('Could not load payment for registration details:', e.message);
+    }
+
+    // Associated Ticket (if any)
+    let ticket = null;
+    try {
+      ticket = await Ticket.findOne({ registration: reg._id }).lean();
+    } catch (e) {
+      console.warn('Could not load ticket for registration details:', e.message);
+    }
+
+    // Associated Attendance and Certificates
+    let attendanceRecords = [];
+    try {
+      attendanceRecords = await Attendance.find({ registration: reg._id }).lean();
+    } catch (e) {}
+
+    let certificateRecords = [];
+    try {
+      certificateRecords = await Certificate.find({ registration: reg._id }).lean();
+    } catch (e) {}
+
+    const passCode = ticket?.ticketCode || reg.ticketCode || reg.registrationCode || '';
+
+    // Build comprehensive response
+    const registrationDetails = {
+      ...reg,
+      email: reg.student?.email || reg.email || '',
+      phone: reg.student?.phone || reg.phone || '',
+      college: reg.student?.college || reg.college || 'PBR Visvodaya Institute of Technology & Science',
+      ticketCode: passCode,
+      passCode,
+      ticket: ticket || null,
+      payment: payment || null,
+      attendanceRecords,
+      certificateRecords,
+    };
+
+    return res.status(200).json({
+      success: true,
+      data: registrationDetails,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createRegistration,
   cancelRegistration,
   getMyRegistrations,
   getAdminRegistrations,
+  getRegistrationById,
 };
