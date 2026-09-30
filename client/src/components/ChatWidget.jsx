@@ -21,9 +21,9 @@ import { Badge } from './common/Badge';
 
 const STUDENT_SUGGESTIONS = [
   'My registered events',
-  'Registration deadlines',
-  'My attendance status',
-  'Certificate status',
+  'What events are available?',
+  'Explain recursion in Java',
+  'How do QR codes work in EventSync?',
   'Who created EventSync?',
 ];
 
@@ -40,128 +40,180 @@ const INITIAL_WELCOME = {
   role: 'assistant',
   type: 'text',
   message:
-    'Namaste! Nenu **EventSync Assistant** 🤖\n\nCollege events, registrations, attendance, certificates, deadlines, or platform details gurinchi nannu adagochu.\n\nEla help cheyagalanu?',
+    'Namaste! Nenu **EventSync Assistant** 🤖\n\nI am your General AI Assistant + EventSync Campus Guide. You can ask me:\n- 🎯 **EventSync queries**: Your registrations, passes, attendance, certificates, event schedules, and live seat capacity.\n- 💡 **General AI queries**: Programming (Java, Python, C++, React), science, math, career questions, or casual conversation in English or Telugu (Tanglish).\n\nEla help cheyagalanu?',
   timestamp: new Date(),
 };
 
 /**
- * Lightweight Markdown text renderer for bold, lists, code, and links.
+ * Markdown text renderer supporting bold, inline code, code blocks, lists, and links.
  */
 const FormattedMessageText = ({ text }) => {
   if (!text) return null;
 
-  // Split lines
-  const lines = text.split('\n');
+  // Render multi-line fenced code blocks or lines
+  const rawParts = text.split(/(```[\s\S]*?```)/g);
+
+  const renderInline = (str) => {
+    const parts = [];
+    const regex = /(\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\))/g;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(str)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(str.substring(lastIndex, match.index));
+      }
+      const token = match[0];
+      if (token.startsWith('**') && token.endsWith('**')) {
+        parts.push(
+          <strong key={`b-${match.index}`} style={{ color: '#F8FAFC' }}>
+            {token.slice(2, -2)}
+          </strong>
+        );
+      } else if (token.startsWith('`') && token.endsWith('`')) {
+        parts.push(
+          <code
+            key={`c-${match.index}`}
+            style={{
+              background: 'rgba(0, 0, 0, 0.35)',
+              padding: '0.15rem 0.35rem',
+              borderRadius: '4px',
+              fontFamily: 'Consolas, Monaco, monospace',
+              color: '#A5B4FC',
+              fontSize: '0.85em',
+            }}
+          >
+            {token.slice(1, -1)}
+          </code>
+        );
+      } else if (token.startsWith('[') && token.includes('](')) {
+        const linkMatch = token.match(/\[(.*?)\]\((.*?)\)/);
+        if (linkMatch) {
+          parts.push(
+            <a
+              key={`a-${match.index}`}
+              href={linkMatch[2]}
+              target={linkMatch[2].startsWith('tel:') ? '_self' : '_blank'}
+              rel="noreferrer"
+              style={{ color: '#818CF8', textDecoration: 'underline', fontWeight: '600' }}
+            >
+              {linkMatch[1]}
+            </a>
+          );
+        }
+      }
+      lastIndex = regex.lastIndex;
+    }
+
+    if (lastIndex < str.length) {
+      parts.push(str.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : str;
+  };
 
   return (
     <div className="chat-markdown-content" style={{ fontSize: '0.9rem', lineHeight: 1.55 }}>
-      {lines.map((line, lineIdx) => {
-        // Bullet point
-        const isBullet = line.trim().startsWith('- ') || line.trim().startsWith('* ');
-        const isNumbered = /^\d+\.\s/.test(line.trim());
+      {rawParts.map((part, partIdx) => {
+        if (part.startsWith('```') && part.endsWith('```')) {
+          const lines = part.slice(3, -3).trim().split('\n');
+          const firstLine = lines[0].trim();
+          const hasLang = firstLine && !firstLine.includes(' ') && firstLine.length < 15;
+          const lang = hasLang ? firstLine : '';
+          const codeContent = hasLang ? lines.slice(1).join('\n') : lines.join('\n');
 
-        // Process inline markdown (**bold**, `code`, [link](url))
-        const renderInline = (str) => {
-          const parts = [];
-          // Tokenize bold, code, links
-          const regex = /(\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\))/g;
-          let lastIndex = 0;
-          let match;
-
-          while ((match = regex.exec(str)) !== null) {
-            if (match.index > lastIndex) {
-              parts.push(str.substring(lastIndex, match.index));
-            }
-            const token = match[0];
-            if (token.startsWith('**') && token.endsWith('**')) {
-              parts.push(
-                <strong key={`b-${match.index}`} style={{ color: '#F8FAFC' }}>
-                  {token.slice(2, -2)}
-                </strong>
-              );
-            } else if (token.startsWith('`') && token.endsWith('`')) {
-              parts.push(
-                <code
-                  key={`c-${match.index}`}
+          return (
+            <div
+              key={`code-${partIdx}`}
+              style={{
+                margin: '0.6rem 0',
+                borderRadius: '0.5rem',
+                overflow: 'hidden',
+                background: '#0B1120',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+              }}
+            >
+              {lang && (
+                <div
                   style={{
-                    background: 'rgba(0, 0, 0, 0.3)',
-                    padding: '0.15rem 0.35rem',
-                    borderRadius: '4px',
-                    fontFamily: 'monospace',
-                    color: '#A5B4FC',
+                    padding: '0.3rem 0.75rem',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                    fontSize: '0.72rem',
+                    color: '#94A3B8',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    fontWeight: '600',
                   }}
                 >
-                  {token.slice(1, -1)}
-                </code>
-              );
-            } else if (token.startsWith('[') && token.includes('](')) {
-              const linkMatch = token.match(/\[(.*?)\]\((.*?)\)/);
-              if (linkMatch) {
-                parts.push(
-                  <a
-                    key={`a-${match.index}`}
-                    href={linkMatch[2]}
-                    target={linkMatch[2].startsWith('tel:') ? '_self' : '_blank'}
-                    rel="noreferrer"
-                    style={{ color: '#818CF8', textDecoration: 'underline', fontWeight: '600' }}
-                  >
-                    {linkMatch[1]}
-                  </a>
-                );
-              }
-            }
-            lastIndex = regex.lastIndex;
-          }
-
-          if (lastIndex < str.length) {
-            parts.push(str.substring(lastIndex));
-          }
-
-          return parts.length > 0 ? parts : str;
-        };
-
-        if (isBullet) {
-          return (
-            <div
-              key={lineIdx}
-              style={{
-                display: 'flex',
-                gap: '0.45rem',
-                alignItems: 'flex-start',
-                marginLeft: '0.4rem',
-                marginTop: '0.2rem',
-              }}
-            >
-              <span style={{ color: '#818CF8', lineHeight: 1.2 }}>•</span>
-              <div style={{ flex: 1 }}>{renderInline(line.replace(/^[-*]\s*/, ''))}</div>
+                  {lang}
+                </div>
+              )}
+              <pre
+                style={{
+                  margin: 0,
+                  padding: '0.75rem 1rem',
+                  overflowX: 'auto',
+                  fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                  fontSize: '0.82rem',
+                  lineHeight: '1.45',
+                  color: '#E2E8F0',
+                }}
+              >
+                <code>{codeContent}</code>
+              </pre>
             </div>
           );
         }
 
-        if (isNumbered) {
-          const numMatch = line.match(/^(\d+\.)\s*(.*)$/);
-          return (
-            <div
-              key={lineIdx}
-              style={{
-                display: 'flex',
-                gap: '0.45rem',
-                alignItems: 'flex-start',
-                marginLeft: '0.4rem',
-                marginTop: '0.2rem',
-              }}
-            >
-              <span style={{ color: '#F59E0B', fontWeight: '600', fontSize: '0.85rem' }}>{numMatch[1]}</span>
-              <div style={{ flex: 1 }}>{renderInline(numMatch[2])}</div>
-            </div>
-          );
-        }
+        const lines = part.split('\n');
+        return lines.map((line, lineIdx) => {
+          const isBullet = line.trim().startsWith('- ') || line.trim().startsWith('* ');
+          const isNumbered = /^\d+\.\s/.test(line.trim());
 
-        if (line.trim() === '') {
-          return <div key={lineIdx} style={{ height: '0.45rem' }} />;
-        }
+          if (isBullet) {
+            return (
+              <div
+                key={`line-${partIdx}-${lineIdx}`}
+                style={{
+                  display: 'flex',
+                  gap: '0.45rem',
+                  alignItems: 'flex-start',
+                  marginLeft: '0.4rem',
+                  marginTop: '0.2rem',
+                }}
+              >
+                <span style={{ color: '#818CF8', lineHeight: 1.2 }}>•</span>
+                <div style={{ flex: 1 }}>{renderInline(line.replace(/^[-*]\s*/, ''))}</div>
+              </div>
+            );
+          }
 
-        return <div key={lineIdx}>{renderInline(line)}</div>;
+          if (isNumbered) {
+            const numMatch = line.match(/^(\d+\.)\s*(.*)$/);
+            return (
+              <div
+                key={`line-${partIdx}-${lineIdx}`}
+                style={{
+                  display: 'flex',
+                  gap: '0.45rem',
+                  alignItems: 'flex-start',
+                  marginLeft: '0.4rem',
+                  marginTop: '0.2rem',
+                }}
+              >
+                <span style={{ color: '#F59E0B', fontWeight: '600', fontSize: '0.85rem' }}>{numMatch[1]}</span>
+                <div style={{ flex: 1 }}>{renderInline(numMatch[2])}</div>
+              </div>
+            );
+          }
+
+          if (line.trim() === '') {
+            return <div key={`line-${partIdx}-${lineIdx}`} style={{ height: '0.45rem' }} />;
+          }
+
+          return <div key={`line-${partIdx}-${lineIdx}`}>{renderInline(line)}</div>;
+        });
       })}
     </div>
   );
@@ -344,7 +396,7 @@ export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
                 </Badge>
               </div>
               <span style={{ fontSize: '0.78rem', color: '#A5B4FC' }}>
-                AI Student Chatbot • English + Telugu (Tanglish)
+                General AI + EventSync Assistant • English + Telugu (Tanglish)
               </span>
             </div>
           </div>
@@ -679,7 +731,7 @@ export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
                   />
                 </div>
                 <span style={{ fontSize: '0.72rem', color: '#A5B4FC' }}>
-                  Tanglish AI Assistant
+                  General AI + Campus Guide
                 </span>
               </div>
             </div>

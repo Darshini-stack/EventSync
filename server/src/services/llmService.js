@@ -1,7 +1,14 @@
 /**
  * llmService.js
- * Interfaces with LLM APIs (Groq openai/gpt-oss-120b, OpenAI-compatible, Google Gemini)
+ * Interfaces with LLM APIs (Groq openai/gpt-oss-120b / openai/gpt-oss-20b / qwen/qwen3.8-27b, Google Gemini, OpenAI-compatible)
  * and provides safe, grounded fallback handling with zero fake data.
+ *
+ * Implements "General AI Assistant + EventSync Assistant":
+ * - General knowledge, coding, science, casual conversation handled naturally by configured LLM.
+ * - EventSync queries grounded strictly in live MongoDB context.
+ * - Strict student privacy isolation.
+ * - Verified Creator Card for EventSync creator questions.
+ * - Strict Event Matching (NEVER falls back to events[0]).
  */
 
 const { CHAT_SYSTEM_PROMPT } = require('../config/chatPrompt');
@@ -21,8 +28,142 @@ const stripMarkdownFences = (text) => {
 };
 
 /**
- * Generates intelligent rule-based / database-grounded response when offline or LLM key is absent.
- * Strictly adheres to ZERO FAKE DATA: No invented dates, numbers, phones, or fake inventions.
+ * Safely extracts a JSON object from text that may contain extra preamble or reasoning.
+ */
+const extractJsonObject = (text) => {
+  if (!text || typeof text !== 'string') return null;
+  const cleaned = stripMarkdownFences(text);
+
+  // 1. Try direct parse
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch (e) {
+    // Continue to regex extraction
+  }
+
+  // 2. Try regex extraction of first outer JSON object
+  const match = cleaned.match(/(\{[\s\S]*\})/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch (e) {
+      // Continue to fallback
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Case-insensitive match for an event in a list by title/eventName.
+ * Sorts by descending title length to match the most specific event title.
+ * NEVER returns events[0] or a random default.
+ */
+const findMatchingEvent = (query, eventsList) => {
+  if (!query || !Array.isArray(eventsList) || eventsList.length === 0) return null;
+  const q = String(query).toLowerCase();
+
+  // Sort descending by title length so longer titles match first
+  const sorted = [...eventsList].sort((a, b) => {
+    const titleA = String(a.eventName || a.title || '').length;
+    const titleB = String(b.eventName || b.title || '').length;
+    return titleB - titleA;
+  });
+
+  // Check full title match in query
+  for (const ev of sorted) {
+    const title = String(ev.eventName || ev.title || '').trim().toLowerCase();
+    if (!title) continue;
+    if (q.includes(title)) {
+      return ev;
+    }
+  }
+
+  // Check significant words (3+ characters) for match
+  for (const ev of sorted) {
+    const title = String(ev.eventName || ev.title || '').trim().toLowerCase();
+    if (!title) continue;
+    // Extract non-generic words
+    const words = title
+      .split(/[^a-z0-9]+/i)
+      .filter((w) => w.length >= 4 && !['event', '2026', 'hackathon', 'competition'].includes(w));
+    for (const w of words) {
+      if (q.includes(w)) {
+        return ev;
+      }
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Checks if a query is specifically asking about the creator/developer of EventSync.
+ * Excludes general knowledge questions about inventions/languages and mixed queries.
+ */
+const isEventSyncCreatorQuestion = (query) => {
+  const q = String(query || '').toLowerCase().trim();
+
+  // General questions or mixed questions that should NOT trigger the creator card
+  const isGeneralOrMixedQuery =
+    q.includes('telephone') ||
+    q.includes('lightbulb') ||
+    q.includes('light bulb') ||
+    q.includes('computer') ||
+    q.includes('electricity') ||
+    q.includes('internet') ||
+    q.includes('world wide web') ||
+    q.includes('python') ||
+    q.includes('java') ||
+    q.includes('c++') ||
+    q.includes('linux') ||
+    q.includes('machine learning') ||
+    q.includes('ai ') ||
+    q.includes('ai?') ||
+    q.includes('qr ') ||
+    q.includes('qr?') ||
+    q.includes('registration') ||
+    q.includes('attendance') ||
+    q.includes('certificate') ||
+    q.includes('deadline') ||
+    q.includes('when is') ||
+    q.includes('seat');
+
+  if (isGeneralOrMixedQuery) return false;
+
+  // Must explicitly ask who created, developed, made, or built EventSync
+  const asksWhoMade =
+    q.includes('who created') ||
+    q.includes('who developed') ||
+    q.includes('who built') ||
+    q.includes('who made') ||
+    q.includes('who is the creator') ||
+    q.includes('who is the developer') ||
+    q.includes('creator of') ||
+    q.includes('developer of') ||
+    q.includes('creator name') ||
+    q.includes('developer name') ||
+    q.includes('creator details') ||
+    q.includes('developer details') ||
+    q === 'creator' ||
+    q === 'developer' ||
+    (q.includes('evaru') &&
+      (q.includes('create') || q.includes('develop') || q.includes('chesaru') || q.includes('chestaru')));
+
+  return asksWhoMade;
+};
+
+/**
+ * Generates safe local fallback responses when the external LLM API is unavailable.
+ * Strictly adheres to:
+ * - Basic EventSync database questions
+ * - Strict student privacy checks
+ * - Basic greetings
+ * - Creator card for EventSync creator queries
+ * - Zero fake data & no silent fallbacks to events[0]
+ * Does NOT replace the general LLM with dozens of hardcoded keywords.
  */
 const generateLocalFallback = ({
   message,
@@ -35,55 +176,7 @@ const generateLocalFallback = ({
   const q = String(message || '').toLowerCase().trim();
 
   // 1. Creator Card (ONLY for EventSync creator / developer questions)
-  const isGeneralKnowledgeQuestion =
-    q.includes('python') ||
-    q.includes('java') ||
-    q.includes('c++') ||
-    q.includes('telephone') ||
-    q.includes('lightbulb') ||
-    q.includes('light bulb') ||
-    q.includes('computer') ||
-    q.includes('electricity') ||
-    q.includes('internet') ||
-    q.includes('world wide web') ||
-    q.includes('relativity') ||
-    q.includes('gravity') ||
-    q.includes('microsoft') ||
-    q.includes('google') ||
-    q.includes('apple') ||
-    q.includes('linux');
-
-  const isCreatorQuestion =
-    !isGeneralKnowledgeQuestion &&
-    (q.includes('eventsync') ||
-      q.includes('this project') ||
-      q.includes('this platform') ||
-      q.includes('this app') ||
-      q === 'who created eventsync' ||
-      q === 'who developed eventsync' ||
-      q === 'who created eventsync?' ||
-      q === 'who developed eventsync?' ||
-      q === 'who is the creator' ||
-      q === 'who is the creator?' ||
-      q === 'who is the developer' ||
-      q === 'who is the developer?' ||
-      q === 'who created this' ||
-      q === 'who created this?' ||
-      q === 'who developed this' ||
-      q === 'who developed this?' ||
-      q === 'who made this' ||
-      q === 'who made this?' ||
-      q === 'who built this' ||
-      q === 'who built this?' ||
-      q === 'creator' ||
-      q === 'creator details' ||
-      q === 'developer' ||
-      q === 'developer details' ||
-      (q.includes('creator') && !isGeneralKnowledgeQuestion) ||
-      (q.includes('developer') && !isGeneralKnowledgeQuestion) ||
-      (q.includes('evaru') && (q.includes('eventsync') || q.includes('chatbot') || q.includes('develop') || q.includes('create'))));
-
-  if (isCreatorQuestion) {
+  if (isEventSyncCreatorQuestion(q)) {
     const creator = projectCreatorData || CREATOR_DATA;
     return {
       type: 'invention_card',
@@ -102,13 +195,13 @@ const generateLocalFallback = ({
     };
   }
 
-  // 2. Privacy refusal for Student (Strict Isolation)
+  // 2. Strict Privacy refusal for Student (Isolation Check)
   if (userRole === 'STUDENT') {
     const asksAnotherPerson =
       q.includes('another student') ||
       q.includes('vere student') ||
       q.includes('other student') ||
-      q.includes("someone else") ||
+      q.includes('someone else') ||
       q.includes("someone's") ||
       /\b(rahul|sneha|priya|anusha|harika|john|rohit|kiran|student)['’]?s\b/i.test(q) ||
       /show me .*['’]s (attendance|pass|ticket|registration|certificate)/i.test(q) ||
@@ -117,16 +210,17 @@ const generateLocalFallback = ({
     if (asksAnotherPerson) {
       return {
         type: 'text',
-        message: 'Sorry, sharing another student\'s private details is strictly prohibited by our privacy policy. Meeru kevalam mee own account registration, attendance & certificate details mathrame access cheyagalaru.',
+        message:
+          "Sorry, sharing another student's private details is strictly prohibited by our privacy policy. Meeru kevalam mee own account registration, attendance & certificate details mathrame access cheyagalaru.",
       };
     }
   }
 
-  // 3. Admin-specific metrics & Live MongoDB Administrative Context
+  // 3. Admin-specific metrics & Live Administrative Context
   if (userRole === 'EVENTADMIN') {
     const allEvents = adminData?.eventsSummary || [];
 
-    // Who registered for this event? / Which students registered?
+    // Who registered for an event?
     if (
       q.includes('who registered') ||
       q.includes('registered participants') ||
@@ -135,8 +229,8 @@ const generateLocalFallback = ({
       q.includes('which students registered') ||
       (q.includes('registered') && q.includes('who'))
     ) {
-      if (allEvents.length > 0) {
-        const matched = allEvents.find((ev) => q.includes((ev.title || '').toLowerCase())) || allEvents[0];
+      const matched = findMatchingEvent(q, allEvents);
+      if (matched) {
         const participants = matched.registeredParticipants || [];
         if (participants.length === 0) {
           return {
@@ -157,21 +251,29 @@ const generateLocalFallback = ({
           message: `**Registered Participants for ${matched.title}** (${participants.length} total):\n\n${listText}`,
         };
       }
+
+      // Check if user named an event that doesn't exist
+      const isAskingSpecific = /who registered for\s+(.+)/i.exec(message);
+      if (isAskingSpecific && isAskingSpecific[1]) {
+        const queryName = isAskingSpecific[1].replace(/[?.,!]/g, '').trim();
+        return {
+          type: 'text',
+          message: `Event "${queryName}" could not be found in EventSync records.`,
+        };
+      }
+
+      // If general registration inquiry for admin
+      const totalRegs = adminData?.metrics?.totalRegistrations ?? '0';
       return {
         type: 'text',
-        message: 'No event registration records found in the database.',
+        message: `**Total Registered Participants**: ${totalRegs} across all events. To see participants for a specific event, please ask: "Who registered for [Event Name]?".`,
       };
     }
 
-    // Which students are present? / Who is present?
-    if (
-      q.includes('who is present') ||
-      q.includes('which students are present') ||
-      q.includes('present students') ||
-      (q.includes('present') && (q.includes('who') || q.includes('which')))
-    ) {
-      if (allEvents.length > 0) {
-        const matched = allEvents.find((ev) => q.includes((ev.title || '').toLowerCase())) || allEvents[0];
+    // Attendance breakdown for specific or all events
+    if (q.includes('who is present') || q.includes('which students are present') || q.includes('present students')) {
+      const matched = findMatchingEvent(q, allEvents);
+      if (matched) {
         const present = matched.presentStudents || [];
         if (present.length === 0) {
           return {
@@ -186,17 +288,18 @@ const generateLocalFallback = ({
             .join('\n')}`,
         };
       }
+      const isAskingSpecific = /present (?:for|in)\s+(.+)/i.exec(message);
+      if (isAskingSpecific && isAskingSpecific[1]) {
+        return {
+          type: 'text',
+          message: `Event "${isAskingSpecific[1].replace(/[?.,!]/g, '').trim()}" could not be found in EventSync records.`,
+        };
+      }
     }
 
-    // Who is absent? / Which students are absent?
-    if (
-      q.includes('who is absent') ||
-      q.includes('which students are absent') ||
-      q.includes('absent students') ||
-      (q.includes('absent') && (q.includes('who') || q.includes('which')))
-    ) {
-      if (allEvents.length > 0) {
-        const matched = allEvents.find((ev) => q.includes((ev.title || '').toLowerCase())) || allEvents[0];
+    if (q.includes('who is absent') || q.includes('which students are absent') || q.includes('absent students')) {
+      const matched = findMatchingEvent(q, allEvents);
+      if (matched) {
         const absent = matched.absentStudents || [];
         if (absent.length === 0) {
           return {
@@ -213,77 +316,8 @@ const generateLocalFallback = ({
       }
     }
 
-    // Who is not marked? / Which students are not marked?
-    if (q.includes('not marked') || q.includes('unmarked')) {
-      if (allEvents.length > 0) {
-        const matched = allEvents.find((ev) => q.includes((ev.title || '').toLowerCase())) || allEvents[0];
-        const notMarked = matched.notMarkedStudents || [];
-        if (notMarked.length === 0) {
-          return {
-            type: 'text',
-            message: `All registered attendees have been marked for "${matched.title}".`,
-          };
-        }
-        return {
-          type: 'text',
-          message: `**Attendees Not Marked for ${matched.title}** (${notMarked.length}):\n\n${notMarked
-            .map((s, i) => `${i + 1}. ${s}`)
-            .join('\n')}`,
-        };
-      }
-    }
-
-    // Which certificates are issued?
-    if (
-      (q.includes('which certificates') && q.includes('issued')) ||
-      q.includes('certificates are issued') ||
-      q.includes('issued certificates')
-    ) {
-      if (allEvents.length > 0) {
-        const matched = allEvents.find((ev) => q.includes((ev.title || '').toLowerCase())) || allEvents[0];
-        const issued = matched.certIssuedStudents || [];
-        if (issued.length === 0) {
-          return {
-            type: 'text',
-            message: `No certificates have been issued yet for "${matched.title}".`,
-          };
-        }
-        return {
-          type: 'text',
-          message: `**Certificates Issued for ${matched.title}** (${issued.length}):\n\n${issued
-            .map((s, i) => `${i + 1}. ${s}`)
-            .join('\n')}`,
-        };
-      }
-    }
-
-    // Which students received their certificates?
-    if (
-      q.includes('received their certificates') ||
-      q.includes('who received certificates') ||
-      q.includes('certificates received') ||
-      q.includes('received certificates')
-    ) {
-      if (allEvents.length > 0) {
-        const matched = allEvents.find((ev) => q.includes((ev.title || '').toLowerCase())) || allEvents[0];
-        const received = matched.certReceivedStudents || [];
-        if (received.length === 0) {
-          return {
-            type: 'text',
-            message: `No students have confirmed receipt of their certificates yet for "${matched.title}".`,
-          };
-        }
-        return {
-          type: 'text',
-          message: `**Students Who Received Certificates for ${matched.title}** (${received.length}):\n\n${received
-            .map((s, i) => `${i + 1}. ${s}`)
-            .join('\n')}`,
-        };
-      }
-    }
-
-    // How many teams registered?
-    if (q.includes('teams') && (q.includes('how many') || q.includes('registered') || q.includes('count'))) {
+    // Team registrations count
+    if (q.includes('teams') && (q.includes('how many') || q.includes('registered') || q.includes('count') || q.includes('total'))) {
       const totalTeams = adminData?.metrics?.totalTeams ?? '0';
       const breakdown = allEvents.map((e) => `- **${e.title}**: ${e.teamsCount || 0} team(s)`).join('\n');
       return {
@@ -294,8 +328,8 @@ const generateLocalFallback = ({
       };
     }
 
-    // How many registrations / total registrations
-    if (q.includes('registration') || q.includes('total') || q.includes('registered') || q.includes('how many')) {
+    // Total registrations overview
+    if (q.includes('registration') && (q.includes('total') || q.includes('how many') || q.includes('count'))) {
       const totalRegs = adminData?.metrics?.totalRegistrations ?? '0';
       const totalTeams = adminData?.metrics?.totalTeams ?? '0';
       const totalEvents = adminData?.metrics?.totalEvents ?? (eventsData ? eventsData.length : 0);
@@ -305,8 +339,8 @@ const generateLocalFallback = ({
       };
     }
 
-    // Attendance summary
-    if (q.includes('attendance')) {
+    // Live attendance summary
+    if (q.includes('attendance') && (q.includes('summary') || q.includes('rate') || q.includes('total') || q.includes('status'))) {
       const att = adminData?.metrics?.attendance;
       if (att) {
         return {
@@ -319,7 +353,7 @@ const generateLocalFallback = ({
     }
 
     // Certificate summary
-    if (q.includes('certificate')) {
+    if (q.includes('certificate') && (q.includes('summary') || q.includes('status') || q.includes('issued') || q.includes('overview'))) {
       const certs = adminData?.metrics?.certificates;
       if (certs) {
         return {
@@ -332,24 +366,53 @@ const generateLocalFallback = ({
     }
   }
 
-  // 4. Student's own records (strictly from actual MongoDB data)
+  // 4. Student's own records (strictly from actual MongoDB userData)
   if (userRole === 'STUDENT') {
-    // Strict privacy protection: Refuse access to another student's pass/attendance/records
-    const isRequestingOther =
-      /\b(ananya|kiran|sameer|divya|arun|other|someone else|friend|another student)\b/i.test(q) ||
-      (/\b(pass|ticket|attendance|records?)\b/i.test(q) && /\b(show|give|get|view|what is)\b/i.test(q) && !/\b(my|mine|me|nenu|naa)\b/i.test(q));
+    // Specific event registration check: "Am I registered for X?"
+    const matchedEventInStudentRegs = findMatchingEvent(q, userData?.registrations || []);
+    const isAskingRegistrationCheck =
+      q.includes('am i registered') ||
+      q.includes('registered for') ||
+      q.includes('register ayyana') ||
+      q.includes('register ayina');
 
-    if (isRequestingOther) {
-      return {
-        type: 'text',
-        message: 'Sorry, due to student privacy policy and security restrictions, I can only provide your own registration, pass, and attendance details. Accessing another student\'s personal records is strictly prohibited.',
-      };
+    if (isAskingRegistrationCheck) {
+      if (matchedEventInStudentRegs) {
+        return {
+          type: 'text',
+          message: `Yes! You are registered for **${matchedEventInStudentRegs.eventName}** (Status: **${matchedEventInStudentRegs.status}**). Registration Code: \`${matchedEventInStudentRegs.rollNumber || 'Active'}\`.`,
+        };
+      }
+      // Check if event exists in published events
+      const eventInDb = findMatchingEvent(q, eventsData);
+      if (eventInDb) {
+        return {
+          type: 'text',
+          message: `You are not currently registered for **${eventInDb.eventName || eventInDb.title}**. You can register from the Events page before the deadline!`,
+        };
+      }
+      // If asking about a specific named event that wasn't found
+      const matchName = /(?:for|in)\s+([a-zA-Z0-9\s]+?)(?:\?|$)/i.exec(message);
+      if (matchName && matchName[1] && matchName[1].trim().length > 3) {
+        return {
+          type: 'text',
+          message: `Could not find event "${matchName[1].trim()}" in EventSync.`,
+        };
+      }
     }
 
+    // Attendance queries
     if (q.includes('attendance') || q.includes('present') || q.includes('absent')) {
+      const matchedAtt = findMatchingEvent(q, userData?.attendance || []);
+      if (matchedAtt) {
+        return {
+          type: 'text',
+          message: `Mee attendance for **${matchedAtt.eventName}**: **${matchedAtt.status || 'NOT_MARKED'}**.`,
+        };
+      }
       if (userData && Array.isArray(userData.attendance) && userData.attendance.length > 0) {
         const attList = userData.attendance
-          .map(a => `- **${a.eventName}**: **${a.status || 'NOT_MARKED'}**`)
+          .map((a) => `- **${a.eventName}**: **${a.status || 'NOT_MARKED'}**`)
           .join('\n');
         return {
           type: 'text',
@@ -362,10 +425,18 @@ const generateLocalFallback = ({
       };
     }
 
+    // Certificate queries
     if (q.includes('certificate')) {
+      const matchedCert = findMatchingEvent(q, userData?.certificates || []);
+      if (matchedCert) {
+        return {
+          type: 'text',
+          message: `Mee certificate status for **${matchedCert.eventName}**: **${matchedCert.status || 'NOT_ISSUED'}**.`,
+        };
+      }
       if (userData && Array.isArray(userData.certificates) && userData.certificates.length > 0) {
         const certList = userData.certificates
-          .map(c => `- **${c.eventName}**: **${c.status || 'NOT_ISSUED'}**`)
+          .map((c) => `- **${c.eventName}**: **${c.status || 'NOT_ISSUED'}**`)
           .join('\n');
         return {
           type: 'text',
@@ -378,6 +449,7 @@ const generateLocalFallback = ({
       };
     }
 
+    // Registered events list
     if (
       q.includes('my registration') ||
       q.includes('registered event') ||
@@ -388,7 +460,7 @@ const generateLocalFallback = ({
     ) {
       if (userData && Array.isArray(userData.registrations) && userData.registrations.length > 0) {
         const regList = userData.registrations
-          .map(r => `- **${r.eventName}** (Roll: **${r.rollNumber || 'Registered'}**, Status: **${r.status}**)`)
+          .map((r) => `- **${r.eventName}** (Roll: **${r.rollNumber || 'Registered'}**, Status: **${r.status}**)`)
           .join('\n');
         return {
           type: 'text',
@@ -401,10 +473,11 @@ const generateLocalFallback = ({
       };
     }
 
-    if (q.includes('pass') || q.includes('ticket')) {
+    // Digital passes & ticket codes
+    if (q.includes('pass') || q.includes('ticket') || q.includes('code')) {
       if (userData && Array.isArray(userData.digitalPasses) && userData.digitalPasses.length > 0) {
         const passList = userData.digitalPasses
-          .map(p => `- **${p.eventName}**: Pass Code \`${p.passCode}\` (${p.status})`)
+          .map((p) => `- **${p.eventName}**: Pass Code \`${p.passCode}\` (${p.status})`)
           .join('\n');
         return {
           type: 'text',
@@ -420,97 +493,161 @@ const generateLocalFallback = ({
 
   // 5. Events Data (strictly from actual MongoDB eventsData)
   if (Array.isArray(eventsData) && eventsData.length > 0) {
-    const matchedEvent = eventsData.find(e => q.includes((e.eventName || e.title || '').toLowerCase())) || eventsData[0];
-
-    if (q.includes('deadline') || q.includes('last date') || q.includes('close')) {
-      if (matchedEvent && matchedEvent.registrationDeadline) {
-        const d = new Date(matchedEvent.registrationDeadline);
-        const formatted = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
-        return {
-          type: 'text',
-          message: `**${matchedEvent.eventName}** registration deadline: **${formatted}**. Deadline taruvatha registrations close aipothayi.`,
-        };
-      }
+    // Check if user is asking for list of all available events
+    if (
+      q.includes('what events') ||
+      q.includes('available events') ||
+      q.includes('list of events') ||
+      q.includes('upcoming events') ||
+      q === 'events' ||
+      q === 'events available'
+    ) {
+      const list = eventsData
+        .map(
+          (e, idx) =>
+            `${idx + 1}. **${e.eventName}** — Date: ${
+              e.date ? new Date(e.date).toLocaleDateString('en-IN') : 'TBA'
+            } | Seats Left: **${e.seatsLeft ?? e.capacity}** | Venue: ${e.venue || 'College Campus'}`
+        )
+        .join('\n');
       return {
         type: 'text',
-        message: 'Registration deadline details are not available for this event.',
+        message: `**Available Events in EventSync** (${eventsData.length} events):\n\n${list}`,
       };
+    }
+
+    // Specific event queries (Never default to eventsData[0]!)
+    const matchedEvent = findMatchingEvent(q, eventsData);
+
+    if (q.includes('deadline') || q.includes('last date') || q.includes('close')) {
+      if (matchedEvent) {
+        if (matchedEvent.registrationDeadline) {
+          const d = new Date(matchedEvent.registrationDeadline);
+          const formatted = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+          return {
+            type: 'text',
+            message: `**${matchedEvent.eventName}** registration deadline: **${formatted}**. Deadline taruvatha registrations close aipothayi.`,
+          };
+        }
+        return {
+          type: 'text',
+          message: `Registration deadline details are not specified for "${matchedEvent.eventName}".`,
+        };
+      }
+
+      // If specific event was asked for but not found
+      const matchSpecific = /(?:for|of)\s+([a-zA-Z0-9\s]+?)(?:\?|$)/i.exec(message);
+      if (matchSpecific && matchSpecific[1]) {
+        return {
+          type: 'text',
+          message: `Could not find event "${matchSpecific[1].trim()}" in EventSync.`,
+        };
+      }
     }
 
     if (q.includes('coordinator') || q.includes('contact') || (q.includes('phone') && !q.includes('telephone'))) {
-      if (matchedEvent && Array.isArray(matchedEvent.coordinators) && matchedEvent.coordinators.length > 0) {
-        const coords = matchedEvent.coordinators
-          .filter(c => c.name)
-          .map((c, i) => `${i + 1}. **${c.name}**${c.phone ? ` (📞 ${c.phone})` : ''}`)
-          .join('\n');
+      if (matchedEvent) {
+        if (Array.isArray(matchedEvent.coordinators) && matchedEvent.coordinators.length > 0) {
+          const coords = matchedEvent.coordinators
+            .filter((c) => c.name)
+            .map((c, i) => `${i + 1}. **${c.name}**${c.phone ? ` (📞 ${c.phone})` : ''}`)
+            .join('\n');
+          return {
+            type: 'text',
+            message: `**${matchedEvent.eventName}** coordinators:\n\n${coords}${
+              matchedEvent.facultyCoordinatorName
+                ? `\n\nFaculty Coordinator: **${matchedEvent.facultyCoordinatorName}**`
+                : ''
+            }`,
+          };
+        }
         return {
           type: 'text',
-          message: `**${matchedEvent.eventName}** coordinators:\n\n${coords}${matchedEvent.facultyCoordinatorName ? `\n\nFaculty Coordinator: **${matchedEvent.facultyCoordinatorName}**` : ''}`,
+          message: `Coordinator contact details are not available for "${matchedEvent.eventName}".`,
         };
       }
-      return {
-        type: 'text',
-        message: 'Coordinator contact details are not available in EventSync right now.',
-      };
+
+      const matchSpecific = /(?:for|of)\s+([a-zA-Z0-9\s]+?)(?:\?|$)/i.exec(message);
+      if (matchSpecific && matchSpecific[1]) {
+        return {
+          type: 'text',
+          message: `Could not find event "${matchSpecific[1].trim()}" in EventSync.`,
+        };
+      }
     }
 
-    if (q.includes('seat') || q.includes('capacity')) {
+    if (q.includes('seat') || q.includes('capacity') || q.includes('seats left') || q.includes('available seats')) {
       if (matchedEvent) {
         return {
           type: 'text',
-          message: `**${matchedEvent.eventName}**: Total capacity is **${matchedEvent.capacity || 0}**, and currently **${matchedEvent.seatsLeft ?? 0} seats are available**.`,
+          message: `**${matchedEvent.eventName}**: Total capacity is **${matchedEvent.capacity || 0}**, and currently **${
+            matchedEvent.seatsLeft ?? 0
+          } seats are available**.`,
+        };
+      }
+      const matchSpecific = /(?:for|in)\s+([a-zA-Z0-9\s]+?)(?:\?|$)/i.exec(message);
+      if (matchSpecific && matchSpecific[1]) {
+        return {
+          type: 'text',
+          message: `Could not find event "${matchSpecific[1].trim()}" in EventSync.`,
         };
       }
     }
+
+    // General question about a specific event (e.g. "When is MindSprint?", "Tell me about Hackathon")
+    if (matchedEvent) {
+      const d = matchedEvent.date ? new Date(matchedEvent.date).toLocaleDateString('en-IN') : 'TBA';
+      return {
+        type: 'text',
+        message: `**${matchedEvent.eventName}**:\n\n- **Date**: ${d}\n- **Venue**: ${
+          matchedEvent.venue || 'TBA'
+        }\n- **Mode**: ${matchedEvent.mode || 'Offline'}\n- **Seats Left**: ${
+          matchedEvent.seatsLeft ?? matchedEvent.capacity
+        }\n- **Category**: ${matchedEvent.category || 'General'}\n\n${matchedEvent.description || ''}`,
+      };
+    }
   }
 
-  // 6. General Knowledge: Always normal type: "text" (NEVER invention_card)
-  if (q.includes('python')) {
+  // 6. Conversational Greetings
+  if (
+    q === 'hi' ||
+    q === 'hello' ||
+    q === 'hey' ||
+    q === 'namaste' ||
+    q === 'namaskaram' ||
+    q.startsWith('hi ') ||
+    q.startsWith('hello ') ||
+    q.startsWith('hey ')
+  ) {
     return {
       type: 'text',
-      message: '**Python** is a popular high-level, general-purpose programming language created by **Guido van Rossum** and first released in 1991.',
-    };
-  }
-  if (q.includes('java')) {
-    return {
-      type: 'text',
-      message: '**Java** is a class-based, object-oriented programming language created by **James Gosling** at Sun Microsystems and released in 1995.',
-    };
-  }
-  if (q.includes('c++')) {
-    return {
-      type: 'text',
-      message: '**C++** is a general-purpose programming language created by **Bjarne Stroustrup** as an extension of the C programming language in 1979.',
-    };
-  }
-  if (q.includes('telephone')) {
-    return {
-      type: 'text',
-      message: 'The practical telephone was patented by **Alexander Graham Bell** in **1876**. It revolutionized telecommunications by enabling real-time human voice transmission over electrical wires.',
-    };
-  }
-  if (q.includes('light bulb') || q.includes('lightbulb')) {
-    return {
-      type: 'text',
-      message: 'The commercially viable incandescent light bulb was developed by **Thomas Edison** in **1879**, using carbonized filament designs to provide long-lasting practical illumination.',
-    };
-  }
-  if (q.includes('recursion')) {
-    return {
-      type: 'text',
-      message: '**Recursion** is a programming concept where a function calls itself directly or indirectly to solve smaller instances of the same problem. A base condition is required to terminate execution.',
+      message:
+        'Namaste! Nenu **EventSync Assistant** 🤖. College events, registrations, attendance, certificates, deadlines, or general knowledge gurinchi nannu adagochu. Ela help cheyagalanu?',
     };
   }
 
-  // 7. Safe Default Unavailable / General greeting
+  // 7. Safe Fallback for offline mode
+  // If the query is an event-seeking question that couldn't be found
+  const eventMatchAttempt = /(?:when is|deadline for|seats in|about|coordinator for)\s+([a-zA-Z0-9\s]+?)(?:\?|$)/i.exec(message);
+  if (eventMatchAttempt && eventMatchAttempt[1] && eventMatchAttempt[1].trim().length > 2) {
+    return {
+      type: 'text',
+      message: `Could not find event "${eventMatchAttempt[1].trim()}" in the EventSync database. Please check the available events list.`,
+    };
+  }
+
+  // Helpful offline fallback informing user that AI cloud is currently in local mode
   return {
     type: 'text',
-    message: 'Hello! I am **EventSync Assistant**. You can ask me about events, registrations, attendance, certificates, deadlines, or general knowledge. How can I help you today?',
+    message:
+      'I am currently operating in local offline mode without an active cloud AI connection. In this mode, I can provide EventSync event schedules, your registrations, attendance, and certificates. For general AI answers, coding, and explanations, please ensure the external LLM service is connected.',
   };
 };
 
 /**
  * Main chat generation function with Groq integration and reliable JSON output.
+ * Gives the LLM full ability to handle general questions, coding, explanations, and conversation,
+ * while anchoring EventSync questions in verified MongoDB data.
  */
 const generateChatResponse = async ({
   message,
@@ -523,30 +660,28 @@ const generateChatResponse = async ({
 }) => {
   const apiKey = process.env.LLM_API_KEY || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
 
-  // If no external API key, use the smart rule-based/database-grounded fallback
+  // If no external API key, use the safe database-grounded local fallback
   if (!apiKey || apiKey === 'your_llm_api_key_here' || apiKey.trim() === '') {
     return generateLocalFallback({ message, userRole, userData, adminData, eventsData, projectCreatorData });
   }
 
-  // Assemble contextual system prompt with real injected MongoDB data and role
+  // Assemble contextual system prompt with token-efficient data injection
+  const roleContext =
+    userRole === 'EVENTADMIN'
+      ? `[USER_ROLE]\nEVENTADMIN\n\n[ADMIN_DATA]\n${JSON.stringify(adminData)}`
+      : `[USER_ROLE]\nSTUDENT\n\n[USER_DATA]\n${JSON.stringify(userData)}`;
+
   const fullSystemPrompt = `${CHAT_SYSTEM_PROMPT}
 
-[USER_ROLE]
-${userRole}
+${roleContext}
 
 [PROJECT_CREATOR_DATA]
-${JSON.stringify(projectCreatorData, null, 2)}
-
-[USER_DATA]
-${JSON.stringify(userData, null, 2)}
-
-[ADMIN_DATA]
-${JSON.stringify(adminData, null, 2)}
+${JSON.stringify(projectCreatorData)}
 
 [EVENTS_DATA]
-${JSON.stringify(eventsData, null, 2)}`;
+${JSON.stringify(eventsData)}`;
 
-  // Keep only latest 10 messages for context window
+  // Keep latest 10 messages for context window
   const trimmedHistory = Array.isArray(history) ? history.slice(-10) : [];
 
   try {
@@ -580,7 +715,7 @@ ${JSON.stringify(eventsData, null, 2)}`;
       });
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
       const res = await fetch(geminiUrl, {
         method: 'POST',
@@ -589,7 +724,7 @@ ${JSON.stringify(eventsData, null, 2)}`;
           contents,
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 1000,
+            maxOutputTokens: 800,
             responseMimeType: 'application/json',
           },
         }),
@@ -606,80 +741,127 @@ ${JSON.stringify(eventsData, null, 2)}`;
       // Groq OpenAI-compatible endpoint
       const messages = [
         { role: 'system', content: fullSystemPrompt },
-        ...trimmedHistory.map(m => ({ role: m.role, content: m.content })),
+        ...trimmedHistory.map((m) => ({ role: m.role, content: m.content })),
         { role: 'user', content: message },
       ];
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      const callGroq = async (modelName) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-      let res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'openai/gpt-oss-120b',
-          messages,
-          temperature: 0.3,
-          max_completion_tokens: 1000,
-          response_format: { type: 'json_object' }
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      // Handle Groq rate limit gracefully with automated backoff retry
-      if (res.status === 429) {
-        console.warn('[LLMService] Rate limited (429), waiting 3.5s before retry...');
-        await new Promise((r) => setTimeout(r, 3500));
-        const retryController = new AbortController();
-        const retryTimeoutId = setTimeout(() => retryController.abort(), 15000);
-        res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        let res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: 'openai/gpt-oss-120b',
+            model: modelName,
             messages,
             temperature: 0.3,
-            max_completion_tokens: 1000,
-            response_format: { type: 'json_object' }
+            max_completion_tokens: 800,
+            response_format: { type: 'json_object' },
           }),
-          signal: retryController.signal,
+          signal: controller.signal,
         });
-        clearTimeout(retryTimeoutId);
-      }
+        clearTimeout(timeoutId);
+
+        // If rate limited on this model, check if we can switch model or wait and retry
+        if (res.status === 429) {
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData?.error?.message || '';
+          console.warn(`[LLMService] Rate limited (429) on ${modelName}:`, errMsg);
+
+          // Try fallback model on Groq first (has its own separate TPM bucket)
+          const fallbackModels = ['openai/gpt-oss-20b', 'qwen/qwen3.8-27b'].filter((m) => m !== modelName);
+          for (const fallbackModel of fallbackModels) {
+            console.log(`[LLMService] Attempting immediate fallback to ${fallbackModel}...`);
+            const fallbackCtrl = new AbortController();
+            const fallbackTimeoutId = setTimeout(() => fallbackCtrl.abort(), 20000);
+            const fallbackRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                model: fallbackModel,
+                messages,
+                temperature: 0.3,
+                max_completion_tokens: 800,
+                response_format: { type: 'json_object' },
+              }),
+              signal: fallbackCtrl.signal,
+            });
+            clearTimeout(fallbackTimeoutId);
+            if (fallbackRes.ok) return fallbackRes;
+          }
+
+          // If still rate limited across models, extract wait delay and retry
+          const matchSeconds = errMsg.match(/try again in\s+(\d+(?:\.\d+)?)\s*s/i);
+          const waitMs = matchSeconds ? Math.ceil(parseFloat(matchSeconds[1]) * 1000) + 600 : 5500;
+          console.log(`[LLMService] Waiting ${waitMs}ms before retry...`);
+          await new Promise((r) => setTimeout(r, Math.min(waitMs, 7500)));
+
+          const retryCtrl = new AbortController();
+          const retryTimeoutId = setTimeout(() => retryCtrl.abort(), 20000);
+          res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: modelName,
+              messages,
+              temperature: 0.3,
+              max_completion_tokens: 800,
+              response_format: { type: 'json_object' },
+            }),
+            signal: retryCtrl.signal,
+          });
+          clearTimeout(retryTimeoutId);
+        }
+
+        return res;
+      };
+
+      // Try primary model (openai/gpt-oss-120b)
+      let res = await callGroq('openai/gpt-oss-120b');
 
       if (res.ok) {
         const data = await res.json();
         const content = data.choices?.[0]?.message?.content;
         if (content) rawResponse = content;
       } else {
-        const errText = await res.text();
+        const errText = await res.text().catch(() => '');
         console.warn('[LLMService] Groq API response not OK:', res.status, errText);
       }
     }
 
     if (rawResponse) {
-      const cleaned = stripMarkdownFences(rawResponse);
-      try {
-        const parsed = JSON.parse(cleaned);
-        if (parsed && typeof parsed === 'object' && parsed.type) {
-          return parsed;
+      const parsed = extractJsonObject(rawResponse);
+      if (parsed) {
+        // Ensure type exists
+        if (!parsed.type) {
+          parsed.type = 'text';
         }
-      } catch (parseErr) {
-        return {
-          type: 'text',
-          message: cleaned,
-        };
+        // If type is text but message is missing, fallback to stringifying or string property
+        if (parsed.type === 'text' && !parsed.message) {
+          parsed.message = parsed.answer || parsed.response || JSON.stringify(parsed);
+        }
+        return parsed;
       }
+
+      // If raw text wasn't valid JSON, return cleaned text wrapped in text object
+      const cleaned = stripMarkdownFences(rawResponse);
+      return {
+        type: 'text',
+        message: cleaned,
+      };
     }
 
-    // Fallback to local answering if external API returned empty
+    // Fallback to local answering if external API returned empty response
     return generateLocalFallback({ message, userRole, userData, adminData, eventsData, projectCreatorData });
   } catch (apiErr) {
     console.warn('[LLMService] API call failed, using safe fallback:', apiErr.message);
@@ -687,4 +869,10 @@ ${JSON.stringify(eventsData, null, 2)}`;
   }
 };
 
-module.exports = { generateChatResponse, generateLocalFallback, stripMarkdownFences };
+module.exports = {
+  generateChatResponse,
+  generateLocalFallback,
+  stripMarkdownFences,
+  extractJsonObject,
+  findMatchingEvent,
+};
