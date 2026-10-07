@@ -66,6 +66,13 @@ const emitSocketEvent = (eventName, payload) => {
  */
 const getEvents = async (req, res, next) => {
   try {
+    if (!mongoose.connection || mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database service is currently unavailable. Please retry in a moment.',
+      });
+    }
+
     const events = await Event.find({ status: 'PUBLISHED' })
       .sort({ date: 1 })
       .populate('createdBy', 'name email')
