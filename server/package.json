@@ -4,6 +4,7 @@
   "description": "EventSync Backend API & Real-time Server",
   "main": "src/server.js",
   "scripts": {
+    "build": "echo 'Server build complete'",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js"
   },
