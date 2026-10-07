@@ -2,8 +2,8 @@ const dns = require('dns');
 const mongoose = require('mongoose');
 const config = require('./env');
 
-// Only override DNS resolver in local development if explicitly requested or on local Windows machines
-if (!process.env.RENDER && config.nodeEnv !== 'production') {
+// Never override DNS resolver on Linux or in cloud environments (Render, AWS, Docker)
+if (process.platform === 'win32' && !process.env.RENDER && config.nodeEnv !== 'production' && process.env.PORT !== '10000') {
   try {
     dns.setServers(['8.8.8.8', '8.8.4.4']);
   } catch (dnsErr) {

@@ -7,7 +7,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const config = {
   port: parseInt(process.env.PORT, 10) || 5000,
   host: process.env.HOST || '0.0.0.0',
-  nodeEnv: process.env.NODE_ENV || 'development',
+  nodeEnv: process.env.NODE_ENV || (process.env.PORT === '10000' || process.env.RENDER ? 'production' : 'development'),
   mongoUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/eventsync',
   jwtSecret: process.env.JWT_SECRET,
   adminAccessCode: process.env.ADMIN_ACCESS_CODE,
