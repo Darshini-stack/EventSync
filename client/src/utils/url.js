@@ -25,17 +25,13 @@ export const getPublicAppUrl = () => {
 
   if (typeof window !== 'undefined' && window.location) {
     const origin = window.location.origin;
-    if (origin && typeof origin === 'string') {
-      const hostname = window.location.hostname;
-      // If deployed or on network IP, use origin
-      if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-        return origin.replace(/\/+$/, '');
-      }
+    if (origin && typeof origin === 'string' && origin.startsWith('http')) {
+      return origin.replace(/\/+$/, '');
     }
   }
 
-  // Production fallback domain (ensures QR codes never hardcode localhost)
-  return 'https://event-sync-tan.vercel.app';
+  // Safe default fallback
+  return 'http://localhost:5173';
 };
 
 /**

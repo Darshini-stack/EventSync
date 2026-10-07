@@ -2,7 +2,13 @@ const express = require('express');
 const router = express.Router();
 const { authenticateToken } = require('../middleware/auth');
 const { chatRateLimiter } = require('../middleware/rateLimiter');
-const { handleChatMessage } = require('../controllers/chatController');
+const { handleChatMessage, proxyImage } = require('../controllers/chatController');
+
+/**
+ * GET /api/chat/image-proxy
+ * Public image proxy for generated AI artwork (bypasses CORS & browser adblockers).
+ */
+router.get('/image-proxy', proxyImage);
 
 /**
  * POST /api/chat

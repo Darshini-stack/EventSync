@@ -8,6 +8,7 @@ const Registration = require('../models/Registration');
 const { posterUploadDir } = require('../middleware/upload');
 const config = require('../config/env');
 const { getLocalIpAddress } = require('../utils/network');
+const { buildEventRegistrationUrl } = require('../utils/qrUrlHelper');
 
 const ALLOWED_CATEGORIES = [
   'Technology',
@@ -140,14 +141,22 @@ const getEventById = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    // Fast-fail if MongoDB is not ready to prevent query buffering/hanging
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database service is temporarily unavailable. Please retry shortly.',
+      });
+    }
+
+    if (!id || typeof id !== 'string' || !mongoose.Types.ObjectId.isValid(id.trim())) {
       return res.status(404).json({
         success: false,
         message: 'Event not found.',
       });
     }
 
-    const event = await Event.findById(id).populate('createdBy', 'name email').lean();
+    const event = await Event.findById(id.trim()).populate('createdBy', 'name email').lean();
 
     if (!event) {
       return res.status(404).json({
@@ -981,12 +990,20 @@ const getEventPoster = async (req, res, next) => {
  */
 const getEventRegistrationQr = async (req, res, next) => {
   try {
+    // Fast-fail if MongoDB is not ready to prevent query buffering/hanging
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database service is temporarily unavailable. Please retry shortly.',
+      });
+    }
+
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!id || typeof id !== 'string' || !mongoose.Types.ObjectId.isValid(id.trim())) {
       return res.status(404).json({ success: false, message: 'Event not found.' });
     }
 
-    const event = await Event.findById(id).select('title status');
+    const event = await Event.findById(id.trim()).select('title status');
     if (!event) {
       return res.status(404).json({ success: false, message: 'Event not found.' });
     }
@@ -997,56 +1014,9 @@ const getEventRegistrationQr = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Event not found.' });
     }
 
-    // 1. Detect dynamic frontend port:
-    let frontendPort = '5173';
-    const candidateUrl = req.query.clientUrl || req.get('origin') || req.get('referer');
-    if (candidateUrl) {
-      try {
-        const parsed = new URL(candidateUrl);
-        if (parsed.port) {
-          frontendPort = parsed.port;
-        }
-      } catch (e) {
-        // fallback
-      }
-    } else if (process.env.CLIENT_PORT) {
-      frontendPort = process.env.CLIENT_PORT;
-    }
-
-    // 2. Resolve configured public/LAN base URL:
-    const serverPublicUrl = (process.env.PUBLIC_APP_URL || config.publicAppUrl || config.clientUrl || '').trim();
-    const lanIp = getLocalIpAddress() || '127.0.0.1';
-    const protocol = req.protocol === 'https' ? 'https' : 'http';
-    let registrationUrl = serverPublicUrl
-      ? `${serverPublicUrl.replace(/\/+$/, '')}/events/${event._id}/register`
-      : `${protocol}://${lanIp}:${frontendPort}/events/${event._id}/register`;
-
-    // Explicit clientUrl query param takes highest precedence
-    if (req.query.clientUrl) {
-      try {
-        const trimmed = req.query.clientUrl.trim();
-        if (trimmed.includes(`/events/${event._id}/register`)) {
-          registrationUrl = trimmed;
-        } else {
-          const parsed = new URL(trimmed);
-          registrationUrl = `${parsed.protocol}//${parsed.host}/events/${event._id}/register`;
-        }
-      } catch (e) {
-        // fallback
-      }
-    } else if (serverPublicUrl) {
-      registrationUrl = `${serverPublicUrl.replace(/\/+$/, '')}/events/${event._id}/register`;
-    } else if (candidateUrl) {
-      // If caller provided a specific non-localhost origin/referer, preserve that domain
-      try {
-        const parsed = new URL(candidateUrl);
-        if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
-          registrationUrl = `${parsed.protocol}//${parsed.host}/events/${event._id}/register`;
-        }
-      } catch (e) {
-        // use LAN URL
-      }
-    }
+    // Resolve dynamic, accessible event registration URL (supports LAN, mobile, desktop, and production)
+    const registrationUrl = buildEventRegistrationUrl(event._id, req);
+    console.log(`[EventController] Registration QR generated for "${event.title}": ${registrationUrl}`);
 
     if (req.query.format === 'json') {
       const dataUrl = await qrcode.toDataURL(registrationUrl, {

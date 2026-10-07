@@ -48,6 +48,14 @@ const ALLOWED_DEPARTMENTS = [
  */
 const createRegistration = async (req, res, next) => {
   try {
+    // Fast-fail if MongoDB is not ready to prevent query buffering/hanging
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database service is temporarily unavailable. Please retry shortly.',
+      });
+    }
+
     const eventId = req.body.eventId || req.params.id || req.params.eventId;
     const {
       fullName,

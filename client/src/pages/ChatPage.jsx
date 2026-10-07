@@ -10,15 +10,15 @@ export const ChatPage = () => {
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
           <Badge variant="primary" style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem' }}>
             <Sparkles size={13} style={{ marginRight: '0.35rem' }} />
-            EventSync AI Assistant
+            EventSync Multimodal AI
           </Badge>
           <Badge variant="info">English + Telugu (Tanglish)</Badge>
         </div>
         <h1 style={{ fontSize: '2.2rem', fontWeight: '800', marginBottom: '0.4rem', color: '#FFFFFF' }}>
-          Ask EventSync Anything
+          Ask EventSync AI Assistant
         </h1>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', margin: 0 }}>
-          Check your registered events, live capacity, attendance status, certificates, coordinators, or ask general questions!
+          Search images, retrieve event registration QRs, track live capacity, attendance status, certificates, or ask general questions!
         </p>
       </div>
 

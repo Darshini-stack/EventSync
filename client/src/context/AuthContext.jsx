@@ -8,14 +8,29 @@ export const TOKEN_STORAGE_KEY = 'eventsync_token';
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(() => {
-    return typeof window !== 'undefined' ? localStorage.getItem(TOKEN_STORAGE_KEY) : null;
+    if (typeof window !== 'undefined') {
+      const urlToken = new URLSearchParams(window.location.search).get('token');
+      if (urlToken) {
+        localStorage.setItem(TOKEN_STORAGE_KEY, urlToken);
+        return urlToken;
+      }
+      return localStorage.getItem(TOKEN_STORAGE_KEY);
+    }
+    return null;
   });
   const [isLoading, setIsLoading] = useState(true);
 
   // Restore authenticated session from MongoDB on application mount/refresh
   useEffect(() => {
     const restoreSession = async () => {
-      const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+      let storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+      if (!storedToken && typeof window !== 'undefined') {
+        const urlToken = new URLSearchParams(window.location.search).get('token');
+        if (urlToken) {
+          localStorage.setItem(TOKEN_STORAGE_KEY, urlToken);
+          storedToken = urlToken;
+        }
+      }
 
       if (!storedToken) {
         setUser(null);

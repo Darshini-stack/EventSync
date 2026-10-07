@@ -31,10 +31,15 @@ const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
 
-    const isLocalhost = origin.includes('localhost') || origin.includes('127.0.0.1');
-    const isPrivateLan = /(https?:\/\/)(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/.test(origin);
+    const isVercel = origin.endsWith('.vercel.app') || origin === 'https://event-sync-tan.vercel.app';
 
-    if (isLocalhost || isPrivateLan || origin === config.clientUrl) {
+    if (
+      isLocalhost ||
+      isPrivateLan ||
+      isVercel ||
+      origin === config.clientUrl ||
+      origin === config.publicAppUrl
+    ) {
       return callback(null, true);
     }
 

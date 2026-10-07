@@ -50,6 +50,7 @@ import { Alert } from '../components/common/Alert';
 import { EmptyState } from '../components/common/EmptyState';
 import { EventCountdown } from '../components/EventCountdown';
 import { EventDateMiniCalendar } from '../components/EventDateMiniCalendar';
+import { ChatWidget } from '../components/ChatWidget';
 
 export const EventDetailsPage = () => {
   const { id } = useParams();
@@ -1507,6 +1508,11 @@ export const EventDetailsPage = () => {
             />
           </div>
         </Modal>
+      )}
+
+      {/* EventSync AI Assistant with Selected Event Context */}
+      {isAuthenticated && (
+        <ChatWidget eventId={id} eventContext={event} />
       )}
     </div>
   );

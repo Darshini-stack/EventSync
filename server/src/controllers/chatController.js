@@ -15,12 +15,14 @@ const Ticket = require('../models/Ticket');
 const { generateChatResponse } = require('../services/llmService');
 const { fetchPersonThumbnail } = require('../services/wikipediaService');
 const { CREATOR_DATA } = require('../config/creatorConfig');
+const { isRegistrationQrRequest, handleRegistrationQrRequest } = require('../services/chatQrHandler');
+const { isImageSearchRequest, handleImageSearch } = require('../services/imageSearchService');
 
 const PROJECT_CREATOR_DATA = CREATOR_DATA;
 
 const handleChatMessage = async (req, res, next) => {
   try {
-    const { message, history } = req.body;
+    const { message, history, eventId } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim() === '') {
       return res.status(400).json({
@@ -38,6 +40,39 @@ const handleChatMessage = async (req, res, next) => {
     }
 
     const userRole = currentUser.role === 'EVENTADMIN' ? 'EVENTADMIN' : 'STUDENT';
+
+    // 1. Check if the request is an event registration QR request
+    if (isRegistrationQrRequest(message, history)) {
+      const qrResult = await handleRegistrationQrRequest({
+        message: message.trim(),
+        history: Array.isArray(history) ? history.slice(-10) : [],
+        eventId: eventId || null,
+        req,
+      });
+
+      const isQrFailure = qrResult && qrResult.type === 'qr_error';
+
+      return res.status(200).json({
+        success: !isQrFailure,
+        data: qrResult,
+      });
+    }
+
+    // 2. Check if the request is a dynamic image search request (viewing/finding existing photos/images of any subject)
+    if (isImageSearchRequest(message, history)) {
+      const searchResult = await handleImageSearch({
+        message: message.trim(),
+        history: Array.isArray(history) ? history.slice(-10) : [],
+        eventId: eventId || null,
+      });
+
+      const isSearchFailure = searchResult && searchResult.type === 'image_error';
+
+      return res.status(200).json({
+        success: !isSearchFailure,
+        data: searchResult,
+      });
+    }
 
     let sanitizedUserData = {};
     let sanitizedAdminData = {};
@@ -220,6 +255,7 @@ const handleChatMessage = async (req, res, next) => {
         const seatsLeft = Math.max(0, (ev.capacity || 0) - activeRegs);
 
         return {
+          eventId: ev._id.toString(),
           eventName: ev.title,
           description: ev.description,
           date: ev.date,
@@ -302,4 +338,67 @@ const handleChatMessage = async (req, res, next) => {
   }
 };
 
-module.exports = { handleChatMessage };
+/**
+ * GET /api/chat/image-proxy?url=...
+ * Proxies remote AI images so browsers load them with 100% reliability, bypassing CORS/cross-origin restrictions.
+ */
+const proxyImage = async (req, res) => {
+  try {
+    const { url, download, filename } = req.query;
+    if (!url || typeof url !== 'string' || (!url.startsWith('https://') && !url.startsWith('http://'))) {
+      return res.status(400).json({ success: false, message: 'Valid HTTP/HTTPS image URL is required.' });
+    }
+
+    // SSRF protection: block private/internal local networks
+    try {
+      const parsedUrl = new URL(url);
+      const host = parsedUrl.hostname.toLowerCase();
+      if (
+        host === 'localhost' ||
+        host === '127.0.0.1' ||
+        host === '0.0.0.0' ||
+        host.startsWith('10.') ||
+        host.startsWith('192.168.') ||
+        /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+      ) {
+        return res.status(403).json({ success: false, message: 'Access to internal network addresses is forbidden.' });
+      }
+    } catch (urlErr) {
+      return res.status(400).json({ success: false, message: 'Malformed image URL.' });
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+    const remoteRes = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EventSync-Proxy/1.0',
+        Accept: 'image/jpeg,image/png,image/webp,image/*,*/*',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!remoteRes.ok) {
+      return res.status(remoteRes.status).json({ success: false, message: `Upstream image error: ${remoteRes.status}` });
+    }
+
+    const contentType = remoteRes.headers.get('content-type') || 'image/jpeg';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
+    if (download === 'true') {
+      const safeFilename = (filename || 'download.jpg').replace(/[^a-zA-Z0-9._-]/g, '_');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeFilename}"`);
+    }
+
+    const buffer = await remoteRes.arrayBuffer();
+    return res.status(200).send(Buffer.from(buffer));
+  } catch (err) {
+    console.warn('[ChatController] Image proxy error:', err.message);
+    return res.status(502).json({ success: false, message: 'Failed to proxy remote image.' });
+  }
+};
+
+module.exports = { handleChatMessage, proxyImage };

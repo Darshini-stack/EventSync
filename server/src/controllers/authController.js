@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
@@ -208,6 +209,22 @@ const login = async (req, res, next) => {
 
     const normalizedEmail = email.toLowerCase().trim();
 
+    // Diagnostic logging for connection verification
+    console.log('[Auth Diagnostic - login]', {
+      mongooseReadyState: mongoose.connection ? mongoose.connection.readyState : null,
+      userDbReadyState: User.db ? User.db.readyState : null,
+      userDbName: User.db ? User.db.name : null,
+      userCollectionName: User.collection ? User.collection.name : null,
+    });
+
+    if (mongoose.connection.readyState !== 1) {
+      console.error(`[Auth Diagnostic - login] Database not connected (readyState=${mongoose.connection.readyState})`);
+      return res.status(503).json({
+        success: false,
+        message: 'Database service is currently unavailable. Please try again shortly.',
+      });
+    }
+
     // Find user by normalized email
     const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
@@ -265,6 +282,14 @@ const adminLogin = async (req, res, next) => {
 
     const normalizedEmail = email.toLowerCase().trim();
 
+    if (mongoose.connection.readyState !== 1) {
+      console.error(`[Auth Diagnostic - adminLogin] Database not connected (readyState=${mongoose.connection.readyState})`);
+      return res.status(503).json({
+        success: false,
+        message: 'Database service is currently unavailable. Please try again shortly.',
+      });
+    }
+
     // 2. Check if user already exists
     let adminUser = await User.findOne({ email: normalizedEmail });
 
@@ -320,7 +345,7 @@ const adminLogin = async (req, res, next) => {
 const getMe = async (req, res) => {
   return res.status(200).json({
     success: true,
-    user: req.user.toJSON(),
+    user: typeof req.user.toJSON === 'function' ? req.user.toJSON() : req.user,
   });
 };
 

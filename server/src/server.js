@@ -15,7 +15,7 @@ const startServer = async () => {
   const httpServer = http.createServer(app);
 
   // Initialize Socket.IO
-  initSocket(httpServer, [config.clientUrl]);
+  initSocket(httpServer, [config.clientUrl, config.publicAppUrl, 'https://event-sync-tan.vercel.app'].filter(Boolean));
 
   // Bind to 0.0.0.0 so both laptop and phones on Wi-Fi/LAN can connect
   httpServer.listen(config.port, config.host, () => {

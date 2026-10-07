@@ -8,31 +8,54 @@ import {
   Bot,
   User,
   Loader2,
-  ChevronDown,
   Minimize2,
   Maximize2,
+  AlertCircle,
+  RefreshCw,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Languages,
+  QrCode,
+  MapPin,
+  Calendar,
+  ExternalLink,
+  ChevronRight,
   HelpCircle,
 } from 'lucide-react';
 import { sendChatMessage } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { InventionCard } from './InventionCard';
-import { Button } from './common/Button';
+import { ChatRegistrationQRCard } from './ChatRegistrationQRCard';
+import { ChatImageGallery } from './ChatImageGallery';
 import { Badge } from './common/Badge';
 
-const STUDENT_SUGGESTIONS = [
-  'My registered events',
-  'What events are available?',
-  'Explain recursion in Java',
-  'How do QR codes work in EventSync?',
-  'Who created EventSync?',
+const STUDENT_GENERAL_SUGGESTIONS = [
+  { label: 'Gandhiji image chupinchu', icon: Sparkles },
+  { label: 'Show Eiffel Tower', icon: MapPin },
+  { label: 'Show QR for Dumb Charades', icon: QrCode },
+  { label: 'Show me APJ Abdul Kalam', icon: Sparkles },
+  { label: 'What events are available?', icon: Calendar },
+  { label: 'Who created EventSync?', icon: HelpCircle },
 ];
 
-const ADMIN_SUGGESTIONS = [
-  'Total event registrations',
-  'How many teams registered?',
-  'Attendance summary',
-  'Certificate status overview',
-  'Who created EventSync?',
+const ADMIN_GENERAL_SUGGESTIONS = [
+  { label: 'Gandhiji image chupinchu', icon: Sparkles },
+  { label: 'Total event registrations', icon: Calendar },
+  { label: 'Show QR for Dumb Charades', icon: QrCode },
+  { label: 'Attendance summary', icon: ExternalLink },
+  { label: 'Show me APJ Abdul Kalam', icon: Sparkles },
+  { label: 'Who created EventSync?', icon: HelpCircle },
+];
+
+const getEventContextSuggestions = (eventTitle) => [
+  { label: 'Show registration QR', icon: QrCode },
+  { label: 'What is the venue?', icon: MapPin },
+  { label: 'When is this event?', icon: Calendar },
+  { label: 'Who is the coordinator?', icon: User },
+  { label: 'Is there a registration fee?', icon: HelpCircle },
+  { label: 'How do I register?', icon: ExternalLink },
 ];
 
 const INITIAL_WELCOME = {
@@ -40,7 +63,7 @@ const INITIAL_WELCOME = {
   role: 'assistant',
   type: 'text',
   message:
-    'Namaste! Nenu **EventSync Assistant** 🤖\n\nI am your General AI Assistant + EventSync Campus Guide. You can ask me:\n- 🎯 **EventSync queries**: Your registrations, passes, attendance, certificates, event schedules, and live seat capacity.\n- 💡 **General AI queries**: Programming (Java, Python, C++, React), science, math, career questions, or casual conversation in English or Telugu (Tanglish).\n\nEla help cheyagalanu?',
+    'Namaste! Welcome to **EventSync AI Assistant** 🤖\n\nI am your campus guide and multimodal assistant. You can ask me:\n- 🖼️ **Image Search**: Ask to see anything! *"Gandhiji image chupinchu"*, *"Show me APJ Abdul Kalam"*, *"Virat Kohli photo"*, *"Show Eiffel Tower"*, *"Cat picture"*, or *"Show a Ferrari"*.\n- 📱 **Registration QR**: Say *"Show registration QR"* or *"QR code chupinchu"* to get official registration passes.\n- 🎯 **EventSync queries**: Schedules, venues, attendance, and live registrations.\n- 💡 **General AI**: Programming, math, science, and questions in English and Telugu (Tanglish).\n\nEla help cheyagalanu?',
   timestamp: new Date(),
 };
 
@@ -50,7 +73,6 @@ const INITIAL_WELCOME = {
 const FormattedMessageText = ({ text }) => {
   if (!text) return null;
 
-  // Render multi-line fenced code blocks or lines
   const rawParts = text.split(/(```[\s\S]*?```)/g);
 
   const renderInline = (str) => {
@@ -75,7 +97,7 @@ const FormattedMessageText = ({ text }) => {
           <code
             key={`c-${match.index}`}
             style={{
-              background: 'rgba(0, 0, 0, 0.35)',
+              background: 'rgba(0, 0, 0, 0.4)',
               padding: '0.15rem 0.35rem',
               borderRadius: '4px',
               fontFamily: 'Consolas, Monaco, monospace',
@@ -219,18 +241,55 @@ const FormattedMessageText = ({ text }) => {
   );
 };
 
-export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
-  const { user, isAuthenticated } = useAuth();
+export const ChatWidget = ({
+  defaultOpen = false,
+  standalone = false,
+  eventId = null,
+  eventContext = null,
+}) => {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(defaultOpen);
   const [isExpanded, setIsExpanded] = useState(false);
   const [inputMessage, setInputMessage] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
   const [messages, setMessages] = useState([INITIAL_WELCOME]);
   const [loading, setLoading] = useState(false);
+  const [activeEventId, setActiveEventId] = useState(eventId || eventContext?._id || null);
+  const [voiceLanguage, setVoiceLanguage] = useState('en-IN'); // 'en-IN' or 'te-IN'
+  const [voiceState, setVoiceState] = useState('idle'); // 'idle' | 'listening' | 'processing' | 'error'
+  const [voiceError, setVoiceError] = useState('');
+  const [speakingMessageId, setSpeakingMessageId] = useState(null);
 
-  const quickSuggestions = user?.role === 'EVENTADMIN' ? ADMIN_SUGGESTIONS : STUDENT_SUGGESTIONS;
-
+  // Bulletproof lifecycle references for speech recognition
+  const recognitionRef = useRef(null);
+  const finalTranscriptRef = useRef('');
+  const submittedRef = useRef(false);
+  const sessionIdRef = useRef(0);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  // Sync active event ID from props
+  useEffect(() => {
+    if (eventId) {
+      setActiveEventId(eventId);
+    } else if (eventContext?._id) {
+      setActiveEventId(eventContext._id);
+    }
+  }, [eventId, eventContext]);
+
+  // Cleanup SpeechRecognition and TTS on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
+    };
+  }, []);
 
   // Auto-scroll to latest message
   const scrollToBottom = () => {
@@ -238,14 +297,21 @@ export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
   };
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen || standalone) {
       scrollToBottom();
-      // Auto-focus input when opened
+    }
+  }, [isOpen, messages, loading, interimTranscript]);
+
+  useEffect(() => {
+    if (isOpen || standalone) {
       setTimeout(() => inputRef.current?.focus(), 150);
     }
-  }, [isOpen, messages, loading]);
+  }, [isOpen, standalone]);
 
-  const handleSend = async (messageToSend = null) => {
+  /**
+   * Main Send Message Handler
+   */
+  const handleSend = async (messageToSend = null, targetEventId = null) => {
     const rawText = messageToSend !== null ? messageToSend : inputMessage;
     const trimmed = String(rawText || '').trim();
     if (!trimmed || loading) return;
@@ -261,29 +327,45 @@ export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInputMessage('');
+    setInterimTranscript('');
     setLoading(true);
 
     try {
       // Build context history (only latest 10 messages)
       const historyContext = newMessages.slice(-10).map((m) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.type === 'invention_card' ? JSON.stringify(m) : m.message,
+        eventId: m.eventId,
+        eventTitle: m.eventTitle,
+        content:
+          m.type === 'image_search'
+            ? `[Images displayed for: ${m.query || 'search'}]`
+            : m.type === 'registration_qr'
+            ? `[Official Event Registration QR Code for ${m.eventTitle || 'Event'}]`
+            : m.type === 'invention_card'
+            ? JSON.stringify(m)
+            : m.message,
       }));
+
+      const effectiveEventId = targetEventId || activeEventId;
 
       const res = await sendChatMessage({
         message: trimmed,
         history: historyContext,
+        eventId: effectiveEventId,
       });
 
-      if (res && res.success && res.data) {
+      if (res && res.data) {
         const botResponse = res.data;
+        if (botResponse.eventId) {
+          setActiveEventId(botResponse.eventId);
+        }
         setMessages((prev) => [
           ...prev,
           {
             id: `bot-${Date.now()}`,
             role: 'assistant',
-            type: botResponse.type || 'text',
-            message: botResponse.message || '',
+            type: botResponse.type || (res.success ? 'text' : 'qr_error'),
+            message: botResponse.message || (res.success ? '' : 'Unable to complete request. Please try again.'),
             ...botResponse,
             timestamp: new Date(),
           },
@@ -319,6 +401,185 @@ export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
     }
   };
 
+  /**
+   * ChatGPT-like Voice Input State Machine & Lifecycle
+   */
+  const toggleVoiceRecognition = () => {
+    const SpeechRecognition =
+      typeof window !== 'undefined'
+        ? window.SpeechRecognition || window.webkitSpeechRecognition || null
+        : null;
+
+    if (!SpeechRecognition) {
+      setVoiceError('Speech recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.');
+      setVoiceState('error');
+      setTimeout(() => {
+        setVoiceState('idle');
+        setVoiceError('');
+      }, 4500);
+      return;
+    }
+
+    // If currently listening, stop immediately
+    if (voiceState === 'listening') {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
+      setVoiceState('idle');
+      setInterimTranscript('');
+      return;
+    }
+
+    // Increment session ID to discard stale callbacks from older instances
+    sessionIdRef.current += 1;
+    const currentSessionId = sessionIdRef.current;
+
+    // Reset session refs
+    finalTranscriptRef.current = '';
+    submittedRef.current = false;
+    setInterimTranscript('');
+    setVoiceError('');
+
+    try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.lang = voiceLanguage;
+      recognition.continuous = false; // single complete utterance session
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => {
+        if (sessionIdRef.current !== currentSessionId) return;
+        setVoiceState('listening');
+        setVoiceError('');
+      };
+
+      recognition.onresult = (event) => {
+        if (sessionIdRef.current !== currentSessionId) return;
+
+        let currentInterim = '';
+        let accumulatedFinal = '';
+
+        for (let i = 0; i < event.results.length; ++i) {
+          const result = event.results[i];
+          if (result.isFinal) {
+            accumulatedFinal += (accumulatedFinal ? ' ' : '') + result[0].transcript.trim();
+          } else {
+            currentInterim += (currentInterim ? ' ' : '') + result[0].transcript.trim();
+          }
+        }
+
+        if (accumulatedFinal) {
+          finalTranscriptRef.current = accumulatedFinal;
+        }
+
+        // Show interim transcript live only in preview, never append to chat history
+        setInterimTranscript(currentInterim);
+      };
+
+      recognition.onerror = (event) => {
+        if (sessionIdRef.current !== currentSessionId) return;
+        console.warn('[SpeechRecognition error]', event.error);
+
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setVoiceError('Microphone access denied. Please allow microphone permissions in your browser.');
+          setVoiceState('error');
+        } else if (event.error === 'no-speech') {
+          // User stayed silent
+          setVoiceState('idle');
+        } else if (event.error !== 'aborted') {
+          setVoiceError(`Voice input error: ${event.error}`);
+          setVoiceState('error');
+        } else {
+          setVoiceState('idle');
+        }
+
+        setTimeout(() => {
+          setVoiceState('idle');
+          setVoiceError('');
+        }, 4000);
+      };
+
+      recognition.onend = () => {
+        if (sessionIdRef.current !== currentSessionId) return;
+
+        const speechToSubmit = (finalTranscriptRef.current || '').trim();
+        setInterimTranscript('');
+
+        // SUBMISSION GUARD: Ensure exactly ONE submission per spoken utterance
+        if (speechToSubmit && !submittedRef.current) {
+          submittedRef.current = true;
+          setVoiceState('processing');
+
+          // Submit the message cleanly exactly once
+          handleSend(speechToSubmit);
+
+          setTimeout(() => {
+            setInputMessage('');
+            finalTranscriptRef.current = '';
+            setVoiceState('idle');
+          }, 200);
+        } else {
+          setVoiceState('idle');
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error('[SpeechRecognition start error]', err);
+      setVoiceState('error');
+      setVoiceError('Could not start microphone. Please check permissions.');
+      setTimeout(() => {
+        setVoiceState('idle');
+        setVoiceError('');
+      }, 3500);
+    }
+  };
+
+  /**
+   * Text-to-speech for assistant messages
+   */
+  const handleSpeakText = (messageId, rawText) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      return;
+    }
+
+    if (speakingMessageId === messageId) {
+      window.speechSynthesis.cancel();
+      setSpeakingMessageId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const cleanSpeech = String(rawText || '')
+      .replace(/```[\s\S]*?```/g, ' Code snippet. ')
+      .replace(/[*_#`~\[\]\(\)]/g, ' ')
+      .replace(/https?:\/\/\S+/g, ' link ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanSpeech) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanSpeech);
+    utterance.lang = voiceLanguage;
+    utterance.rate = 1.0;
+
+    utterance.onend = () => setSpeakingMessageId(null);
+    utterance.onerror = () => setSpeakingMessageId(null);
+
+    setSpeakingMessageId(messageId);
+    window.speechSynthesis.speak(utterance);
+  };
+
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -336,11 +597,661 @@ export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
     ]);
   };
 
-  const handleSuggestionClick = (suggestion) => {
-    handleSend(suggestion);
+  // Determine suggestions based on context
+  const activeSuggestions = eventContext?.title
+    ? getEventContextSuggestions(eventContext.title)
+    : user?.role === 'EVENTADMIN'
+    ? ADMIN_GENERAL_SUGGESTIONS
+    : STUDENT_GENERAL_SUGGESTIONS;
+
+  // Render individual message content
+  const renderMessageContent = (m) => {
+    if (m.type === 'image_search' || (Array.isArray(m.images) && m.images.length > 0)) {
+      return <ChatImageGallery card={m} />;
+    }
+
+    if (m.type === 'registration_qr') {
+      return <ChatRegistrationQRCard card={m} />;
+    }
+
+    if (m.type === 'invention_card') {
+      return <InventionCard card={m} />;
+    }
+
+    if (m.type === 'qr_error') {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+              color: '#F87171',
+              fontWeight: '600',
+              fontSize: '0.85rem',
+            }}
+          >
+            <AlertCircle size={15} />
+            <span>{m.message || 'Unable to retrieve registration QR.'}</span>
+          </div>
+          {m.eventTitle && (
+            <div style={{ fontSize: '0.75rem', color: '#94A3B8' }}>
+              Event: {m.eventTitle}
+            </div>
+          )}
+          <button
+            onClick={() =>
+              handleSend(
+                `Show registration QR for ${m.eventTitle || 'this event'}`,
+                m.eventId
+              )
+            }
+            disabled={loading}
+            style={{
+              alignSelf: 'flex-start',
+              padding: '0.3rem 0.65rem',
+              fontSize: '0.74rem',
+              borderRadius: '0.4rem',
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              color: '#FCA5A5',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              marginTop: '0.2rem',
+            }}
+          >
+            <RefreshCw size={12} />
+            <span>Retry</span>
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <FormattedMessageText text={m.message} />
+        {m.role === 'assistant' && (
+          <button
+            type="button"
+            onClick={() => handleSpeakText(m.id, m.message)}
+            title={speakingMessageId === m.id ? 'Stop audio' : 'Listen aloud'}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: speakingMessageId === m.id ? '#EC4899' : 'rgba(148, 163, 184, 0.7)',
+              cursor: 'pointer',
+              padding: '0.2rem',
+              borderRadius: '0.25rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              fontSize: '0.72rem',
+              marginTop: '0.45rem',
+              transition: 'color 0.2s ease',
+            }}
+          >
+            {speakingMessageId === m.id ? <VolumeX size={13} /> : <Volume2 size={13} />}
+            <span>{speakingMessageId === m.id ? 'Stop' : 'Listen'}</span>
+          </button>
+        )}
+      </div>
+    );
   };
 
-  // If in standalone page mode (/chat)
+  // Shared inner chat layout renderer
+  const renderChatBody = ({ isModal = false } = {}) => (
+    <>
+      {/* Header */}
+      <div
+        style={{
+          padding: isModal ? '0.9rem 1.25rem' : '1.15rem 1.6rem',
+          background: 'linear-gradient(90deg, rgba(99, 102, 241, 0.22) 0%, rgba(168, 85, 247, 0.18) 100%)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div
+            style={{
+              width: isModal ? '36px' : '42px',
+              height: isModal ? '36px' : '42px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #6366F1 0%, #A855F7 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#FFFFFF',
+              boxShadow: '0 0 16px rgba(99, 102, 241, 0.45)',
+              flexShrink: 0,
+            }}
+          >
+            <Bot size={isModal ? 20 : 23} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: isModal ? '1.02rem' : '1.2rem',
+                  fontWeight: '700',
+                  color: '#FFFFFF',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                EventSync AI Assistant
+              </h2>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.35rem',
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  padding: '0.12rem 0.5rem',
+                  borderRadius: 'var(--radius-full, 9999px)',
+                  fontSize: '0.68rem',
+                  color: '#34D399',
+                  fontWeight: '600',
+                }}
+              >
+                <span
+                  className="chat-status-dot-pulse"
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#10B981',
+                  }}
+                />
+                <span>Online</span>
+              </div>
+              {eventContext?.title && (
+                <span
+                  style={{
+                    fontSize: '0.7rem',
+                    color: '#C7D2FE',
+                    background: 'rgba(99, 102, 241, 0.25)',
+                    border: '1px solid rgba(99, 102, 241, 0.4)',
+                    padding: '0.12rem 0.5rem',
+                    borderRadius: 'var(--radius-full, 9999px)',
+                    fontWeight: '600',
+                    maxWidth: '180px',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                  title={eventContext.title}
+                >
+                  📍 {eventContext.title}
+                </span>
+              )}
+            </div>
+            <span style={{ fontSize: isModal ? '0.74rem' : '0.8rem', color: '#A5B4FC' }}>
+              Campus Guide & Multimodal AI • English + Telugu
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <button
+            onClick={handleClearChat}
+            style={{
+              background: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#CBD5E1',
+              cursor: 'pointer',
+              padding: '0.4rem',
+              borderRadius: '0.45rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            title="Clear conversation"
+          >
+            <Trash2 size={16} />
+          </button>
+          {isModal && (
+            <button
+              onClick={() => setIsExpanded((prev) => !prev)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#CBD5E1',
+                cursor: 'pointer',
+                padding: '0.4rem',
+                borderRadius: '0.45rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title={isExpanded ? 'Collapse' : 'Expand'}
+            >
+              {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+          )}
+          {isModal && (
+            <button
+              onClick={() => setIsOpen(false)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#CBD5E1',
+                cursor: 'pointer',
+                padding: '0.4rem',
+                borderRadius: '0.45rem',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Close chat"
+            >
+              <X size={17} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Message Stream */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: isModal ? '1rem 1.15rem' : '1.25rem 1.6rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem',
+        }}
+      >
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            className="chat-message-animated"
+            style={{
+              display: 'flex',
+              gap: '0.65rem',
+              alignItems: 'flex-start',
+              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+              maxWidth: m.role === 'user' ? '80%' : '90%',
+              flexDirection: m.role === 'user' ? 'row-reverse' : 'row',
+            }}
+          >
+            {/* Avatar */}
+            <div
+              style={{
+                width: isModal ? '30px' : '34px',
+                height: isModal ? '30px' : '34px',
+                borderRadius: '50%',
+                background:
+                  m.role === 'user'
+                    ? 'linear-gradient(135deg, #EC4899, #8B5CF6)'
+                    : 'linear-gradient(135deg, #4F46E5, #6366F1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#FFFFFF',
+                flexShrink: 0,
+                fontSize: '0.78rem',
+                boxShadow:
+                  m.role === 'user'
+                    ? '0 2px 8px rgba(236, 72, 153, 0.35)'
+                    : '0 2px 8px rgba(99, 102, 241, 0.35)',
+              }}
+            >
+              {m.role === 'user' ? <User size={15} /> : <Bot size={15} />}
+            </div>
+
+            {/* Message Bubble Card */}
+            <div
+              style={{
+                padding: isModal ? '0.75rem 1rem' : '0.85rem 1.15rem',
+                borderRadius: '1rem',
+                borderTopRightRadius: m.role === 'user' ? '0.2rem' : '1rem',
+                borderTopLeftRadius: m.role === 'user' ? '1rem' : '0.2rem',
+                background:
+                  m.role === 'user'
+                    ? 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)'
+                    : 'rgba(30, 41, 59, 0.88)',
+                border: '1px solid',
+                borderColor:
+                  m.role === 'user' ? 'rgba(99, 102, 241, 0.5)' : 'rgba(255, 255, 255, 0.08)',
+                color: '#F8FAFC',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
+              }}
+            >
+              {renderMessageContent(m)}
+            </div>
+          </div>
+        ))}
+
+        {/* Typing indicator */}
+        {loading && (
+          <div
+            className="chat-message-animated"
+            style={{
+              display: 'flex',
+              gap: '0.65rem',
+              alignItems: 'center',
+              alignSelf: 'flex-start',
+            }}
+          >
+            <div
+              style={{
+                width: isModal ? '30px' : '34px',
+                height: isModal ? '30px' : '34px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #4F46E5, #6366F1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#FFFFFF',
+              }}
+            >
+              <Bot size={15} />
+            </div>
+            <div
+              style={{
+                padding: '0.65rem 1rem',
+                borderRadius: '1rem',
+                borderTopLeftRadius: '0.2rem',
+                background: 'rgba(30, 41, 59, 0.88)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.6rem',
+                color: '#C7D2FE',
+                fontSize: '0.84rem',
+              }}
+            >
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <span
+                  className="chat-typing-dot-1"
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#818CF8',
+                  }}
+                />
+                <span
+                  className="chat-typing-dot-2"
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#A855F7',
+                  }}
+                />
+                <span
+                  className="chat-typing-dot-3"
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: '#EC4899',
+                  }}
+                />
+              </div>
+              <span>EventSync Assistant is thinking...</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Modern Suggestion Chips */}
+      <div
+        style={{
+          padding: isModal ? '0.5rem 1rem' : '0.65rem 1.5rem',
+          background: 'rgba(15, 23, 42, 0.65)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+          display: 'flex',
+          gap: '0.45rem',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
+        }}
+      >
+        {activeSuggestions.map((item, idx) => {
+          const IconComp = item.icon || Sparkles;
+          return (
+            <button
+              key={idx}
+              disabled={loading}
+              onClick={() => handleSend(item.label)}
+              style={{
+                whiteSpace: 'nowrap',
+                padding: '0.35rem 0.75rem',
+                borderRadius: 'var(--radius-full, 9999px)',
+                background: 'rgba(99, 102, 241, 0.12)',
+                border: '1px solid rgba(99, 102, 241, 0.3)',
+                color: '#C7D2FE',
+                fontSize: isModal ? '0.74rem' : '0.78rem',
+                fontWeight: '500',
+                cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseOver={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.background = 'rgba(99, 102, 241, 0.25)';
+                  e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.5)';
+                }
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)';
+                e.currentTarget.style.borderColor = 'rgba(99, 102, 241, 0.3)';
+              }}
+            >
+              <IconComp size={12} style={{ color: '#818CF8' }} />
+              <span>{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Voice Listening Banner */}
+      {voiceState === 'listening' && (
+        <div
+          style={{
+            padding: '0.5rem 1.25rem',
+            background: 'linear-gradient(90deg, rgba(236, 72, 153, 0.25), rgba(139, 92, 246, 0.25))',
+            borderTop: '1px solid rgba(236, 72, 153, 0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            fontSize: '0.78rem',
+            color: '#F472B6',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: '#EC4899',
+                boxShadow: '0 0 10px #EC4899',
+              }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ fontWeight: '600' }}>
+                Listening in {voiceLanguage === 'te-IN' ? 'Telugu (తెలుగు)' : 'English'}...
+              </span>
+              {interimTranscript && (
+                <span style={{ color: '#FDF2F8', fontStyle: 'italic' }}>
+                  "{interimTranscript}"
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={toggleVoiceRecognition}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#CBD5E1',
+              cursor: 'pointer',
+              fontSize: '0.75rem',
+              textDecoration: 'underline',
+              fontWeight: '600',
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {/* Voice Error Banner */}
+      {voiceError && (
+        <div
+          style={{
+            padding: '0.4rem 1.25rem',
+            background: 'rgba(239, 68, 68, 0.18)',
+            borderTop: '1px solid rgba(239, 68, 68, 0.35)',
+            color: '#FCA5A5',
+            fontSize: '0.76rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+          }}
+        >
+          <AlertCircle size={13} />
+          <span>{voiceError}</span>
+        </div>
+      )}
+
+      {/* Input Container */}
+      <div
+        style={{
+          padding: isModal ? '0.75rem 1rem' : '1rem 1.5rem',
+          background: 'rgba(15, 23, 42, 0.95)',
+          borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          gap: '0.5rem',
+          alignItems: 'center',
+        }}
+      >
+        <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder={
+              voiceState === 'listening'
+                ? interimTranscript ? `Listening: "${interimTranscript}"` : 'Listening... Speak now'
+                : 'Ask anything, search images, or request registration QR...'
+            }
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={loading}
+            className="form-input"
+            style={{
+              width: '100%',
+              padding: isModal ? '0.65rem 0.9rem' : '0.75rem 1.15rem',
+              borderRadius: 'var(--radius-full, 9999px)',
+              background: 'rgba(30, 41, 59, 0.75)',
+              border: voiceState === 'listening' ? '1px solid #EC4899' : '1px solid rgba(255, 255, 255, 0.12)',
+              color: '#FFFFFF',
+              fontSize: isModal ? '0.86rem' : '0.92rem',
+              outline: 'none',
+              boxShadow: voiceState === 'listening' ? '0 0 12px rgba(236, 72, 153, 0.3)' : 'none',
+              transition: 'all 0.2s ease',
+            }}
+          />
+        </div>
+
+        {/* Voice Language Toggle (EN / TE) */}
+        <button
+          type="button"
+          onClick={() => setVoiceLanguage((prev) => (prev === 'en-IN' ? 'te-IN' : 'en-IN'))}
+          title={`Switch voice language (Current: ${voiceLanguage === 'en-IN' ? 'English (en-IN)' : 'Telugu (te-IN)'})`}
+          style={{
+            padding: '0.35rem 0.55rem',
+            borderRadius: 'var(--radius-full, 9999px)',
+            background: 'rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            color: '#CBD5E1',
+            fontSize: '0.72rem',
+            fontWeight: '700',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'background 0.2s ease',
+          }}
+          onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)')}
+          onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+        >
+          {voiceLanguage === 'en-IN' ? 'EN' : 'TE'}
+        </button>
+
+        {/* Microphone Button with Active Listening Pulse */}
+        <button
+          type="button"
+          onClick={toggleVoiceRecognition}
+          className={voiceState === 'listening' ? 'chat-voice-listening' : ''}
+          title={
+            voiceState === 'listening'
+              ? 'Stop listening'
+              : `Voice input (${voiceLanguage === 'en-IN' ? 'English' : 'Telugu'})`
+          }
+          style={{
+            width: isModal ? '38px' : '44px',
+            height: isModal ? '38px' : '44px',
+            borderRadius: '50%',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            background:
+              voiceState === 'listening'
+                ? 'linear-gradient(135deg, #EC4899 0%, #EF4444 100%)'
+                : 'rgba(99, 102, 241, 0.15)',
+            border: voiceState === 'listening' ? '2px solid #F43F5E' : '1px solid rgba(99, 102, 241, 0.35)',
+            color: voiceState === 'listening' ? '#FFFFFF' : '#A5B4FC',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          {voiceState === 'listening' ? <MicOff size={18} /> : <Mic size={18} />}
+        </button>
+
+        {/* Send Button */}
+        <button
+          onClick={() => handleSend()}
+          disabled={!inputMessage.trim() || loading}
+          className="btn btn-primary"
+          style={{
+            width: isModal ? '38px' : '44px',
+            height: isModal ? '38px' : '44px',
+            borderRadius: '50%',
+            padding: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+            border: 'none',
+            color: '#FFFFFF',
+            cursor: !inputMessage.trim() || loading ? 'not-allowed' : 'pointer',
+            opacity: !inputMessage.trim() || loading ? 0.6 : 1,
+            boxShadow: !inputMessage.trim() || loading ? 'none' : '0 4px 14px rgba(99, 102, 241, 0.4)',
+            transition: 'all 0.2s ease',
+          }}
+          title="Send Message"
+        >
+          {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+        </button>
+      </div>
+    </>
+  );
+
+  // Standalone Mode (Full page view /chat)
   if (standalone) {
     return (
       <div
@@ -351,260 +1262,15 @@ export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
           height: 'calc(100vh - 120px)',
           maxWidth: '900px',
           margin: '0 auto',
-          background: 'rgba(15, 23, 42, 0.75)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          background: 'rgba(15, 23, 42, 0.85)',
+          border: '1px solid rgba(99, 102, 241, 0.35)',
           borderRadius: '1.25rem',
           backdropFilter: 'blur(20px)',
           overflow: 'hidden',
-          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)',
+          boxShadow: '0 24px 48px rgba(0, 0, 0, 0.5), 0 0 24px rgba(99, 102, 241, 0.2)',
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '1rem 1.5rem',
-            background: 'linear-gradient(90deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.15) 100%)',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-            <div
-              style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '50%',
-                background: 'var(--gradient-brand)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#FFFFFF',
-                boxShadow: '0 0 16px rgba(99, 102, 241, 0.5)',
-              }}
-            >
-              <Bot size={22} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <h2 style={{ fontSize: '1.15rem', fontWeight: '700', margin: 0, color: '#FFFFFF' }}>
-                  EventSync Assistant
-                </h2>
-                <Badge variant="success" style={{ fontSize: '0.68rem', padding: '0.1rem 0.4rem' }}>
-                  Online
-                </Badge>
-              </div>
-              <span style={{ fontSize: '0.78rem', color: '#A5B4FC' }}>
-                General AI + EventSync Assistant • English + Telugu (Tanglish)
-              </span>
-            </div>
-          </div>
-
-          <button
-            onClick={handleClearChat}
-            className="btn btn-secondary"
-            style={{
-              padding: '0.4rem 0.75rem',
-              fontSize: '0.8rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.35rem',
-            }}
-            title="Reset conversation"
-          >
-            <Trash2 size={14} />
-            <span>Clear Chat</span>
-          </button>
-        </div>
-
-        {/* Message Stream */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '1.25rem 1.5rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1rem',
-          }}
-        >
-          {messages.map((m) => (
-            <div
-              key={m.id}
-              style={{
-                display: 'flex',
-                gap: '0.75rem',
-                alignItems: 'flex-start',
-                alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                maxWidth: m.role === 'user' ? '75%' : '88%',
-                flexDirection: m.role === 'user' ? 'row-reverse' : 'row',
-              }}
-            >
-              <div
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  background: m.role === 'user' ? 'linear-gradient(135deg, #EC4899, #8B5CF6)' : 'var(--gradient-brand)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFFFFF',
-                  flexShrink: 0,
-                  fontSize: '0.8rem',
-                }}
-              >
-                {m.role === 'user' ? <User size={16} /> : <Bot size={16} />}
-              </div>
-
-              <div
-                style={{
-                  padding: '0.85rem 1.15rem',
-                  borderRadius: '1rem',
-                  borderTopRightRadius: m.role === 'user' ? '0.2rem' : '1rem',
-                  borderTopLeftRadius: m.role === 'user' ? '1rem' : '0.2rem',
-                  background:
-                    m.role === 'user'
-                      ? 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)'
-                      : 'rgba(30, 41, 59, 0.85)',
-                  border: '1px solid',
-                  borderColor:
-                    m.role === 'user' ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.08)',
-                  color: '#F8FAFC',
-                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
-                }}
-              >
-                {m.type === 'invention_card' ? (
-                  <InventionCard card={m} />
-                ) : (
-                  <FormattedMessageText text={m.message} />
-                )}
-              </div>
-            </div>
-          ))}
-
-          {loading && (
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', alignSelf: 'flex-start' }}>
-              <div
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  borderRadius: '50%',
-                  background: 'var(--gradient-brand)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFFFFF',
-                }}
-              >
-                <Bot size={16} />
-              </div>
-              <div
-                style={{
-                  padding: '0.65rem 1rem',
-                  borderRadius: '1rem',
-                  background: 'rgba(30, 41, 59, 0.85)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  color: '#A5B4FC',
-                  fontSize: '0.85rem',
-                }}
-              >
-                <Loader2 size={15} className="animate-spin" />
-                <span>EventSync Assistant is thinking...</span>
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Quick Suggestion Chips */}
-        <div
-          style={{
-            padding: '0.6rem 1.5rem',
-            background: 'rgba(15, 23, 42, 0.5)',
-            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-            display: 'flex',
-            gap: '0.5rem',
-            overflowX: 'auto',
-            scrollbarWidth: 'none',
-          }}
-        >
-          {quickSuggestions.map((chip, idx) => (
-            <button
-              key={idx}
-              disabled={loading}
-              onClick={() => handleSuggestionClick(chip)}
-              style={{
-                whiteSpace: 'nowrap',
-                padding: '0.35rem 0.75rem',
-                borderRadius: 'var(--radius-full)',
-                background: 'rgba(99, 102, 241, 0.12)',
-                border: '1px solid rgba(99, 102, 241, 0.3)',
-                color: '#C7D2FE',
-                fontSize: '0.78rem',
-                fontWeight: '500',
-                cursor: loading ? 'not-allowed' : 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-              onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(99, 102, 241, 0.25)')}
-              onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)')}
-            >
-              {chip}
-            </button>
-          ))}
-        </div>
-
-        {/* Input Bar */}
-        <div
-          style={{
-            padding: '1rem 1.5rem',
-            background: 'rgba(15, 23, 42, 0.95)',
-            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            display: 'flex',
-            gap: '0.75rem',
-            alignItems: 'center',
-          }}
-        >
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Ask about events, attendance, certificates or general questions..."
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={loading}
-            className="form-input"
-            style={{
-              flex: 1,
-              padding: '0.75rem 1rem',
-              borderRadius: 'var(--radius-full)',
-              background: 'rgba(30, 41, 59, 0.6)',
-            }}
-          />
-          <button
-            onClick={() => handleSend()}
-            disabled={!inputMessage.trim() || loading}
-            className="btn btn-primary"
-            style={{
-              width: '44px',
-              height: '44px',
-              borderRadius: '50%',
-              padding: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-            title="Send Message"
-          >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-          </button>
-        </div>
+        {renderChatBody({ isModal: false })}
       </div>
     );
   }
@@ -639,16 +1305,19 @@ export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
           }}
           onMouseOver={(e) => {
             e.currentTarget.style.transform = 'scale(1.08) translateY(-2px)';
-            e.currentTarget.style.boxShadow = '0 12px 32px rgba(99, 102, 241, 0.65), 0 0 20px rgba(168, 85, 247, 0.5)';
+            e.currentTarget.style.boxShadow =
+              '0 12px 32px rgba(99, 102, 241, 0.65), 0 0 20px rgba(168, 85, 247, 0.5)';
           }}
           onMouseOut={(e) => {
             e.currentTarget.style.transform = 'scale(1) translateY(0)';
-            e.currentTarget.style.boxShadow = '0 8px 24px rgba(99, 102, 241, 0.5), 0 0 16px rgba(168, 85, 247, 0.4)';
+            e.currentTarget.style.boxShadow =
+              '0 8px 24px rgba(99, 102, 241, 0.5), 0 0 16px rgba(168, 85, 247, 0.4)';
           }}
         >
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Bot size={28} />
             <span
+              className="chat-status-dot-pulse"
               style={{
                 position: 'absolute',
                 top: '-3px',
@@ -673,302 +1342,20 @@ export const ChatWidget = ({ defaultOpen = false, standalone = false }) => {
             position: 'fixed',
             bottom: '24px',
             right: '24px',
-            width: isExpanded ? 'min(90vw, 700px)' : 'min(92vw, 420px)',
-            height: isExpanded ? 'min(85vh, 750px)' : 'min(80vh, 580px)',
+            width: isExpanded ? 'min(92vw, 760px)' : 'min(94vw, 440px)',
+            height: isExpanded ? 'min(88vh, 780px)' : 'min(82vh, 600px)',
             borderRadius: '1.25rem',
             background: 'rgba(15, 23, 42, 0.95)',
             backdropFilter: 'blur(20px)',
             border: '1px solid rgba(99, 102, 241, 0.35)',
-            boxShadow: '0 24px 48px rgba(0, 0, 0, 0.5), 0 0 24px rgba(99, 102, 241, 0.25)',
+            boxShadow: '0 24px 48px rgba(0, 0, 0, 0.6), 0 0 24px rgba(99, 102, 241, 0.25)',
             display: 'flex',
             flexDirection: 'column',
             zIndex: 99999,
             overflow: 'hidden',
-            animation: 'fadeInUp 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
         >
-          {/* Header */}
-          <div
-            style={{
-              padding: '0.85rem 1.15rem',
-              background: 'linear-gradient(90deg, rgba(99, 102, 241, 0.25) 0%, rgba(168, 85, 247, 0.2) 100%)',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-              <div
-                style={{
-                  width: '34px',
-                  height: '34px',
-                  borderRadius: '50%',
-                  background: 'var(--gradient-brand)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#FFFFFF',
-                  boxShadow: '0 0 12px rgba(99, 102, 241, 0.4)',
-                }}
-              >
-                <Bot size={18} />
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <h3 style={{ margin: 0, fontSize: '0.98rem', fontWeight: '700', color: '#FFFFFF' }}>
-                    EventSync Assistant
-                  </h3>
-                  <span
-                    style={{
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      background: '#10B981',
-                      boxShadow: '0 0 8px #10B981',
-                    }}
-                    title="Active"
-                  />
-                </div>
-                <span style={{ fontSize: '0.72rem', color: '#A5B4FC' }}>
-                  General AI + Campus Guide
-                </span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-              <button
-                onClick={handleClearChat}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  padding: '0.35rem',
-                  borderRadius: '0.35rem',
-                }}
-                title="Clear conversation"
-              >
-                <Trash2 size={16} />
-              </button>
-              <button
-                onClick={() => setIsExpanded((prev) => !prev)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  padding: '0.35rem',
-                  borderRadius: '0.35rem',
-                }}
-                title={isExpanded ? 'Collapse' : 'Expand'}
-              >
-                {isExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-              </button>
-              <button
-                onClick={() => setIsOpen(false)}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-muted)',
-                  cursor: 'pointer',
-                  padding: '0.35rem',
-                  borderRadius: '0.35rem',
-                }}
-                title="Close chat"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </div>
-
-          {/* Message List */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '1rem',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.85rem',
-            }}
-          >
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  alignItems: 'flex-start',
-                  alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                  maxWidth: m.role === 'user' ? '82%' : '90%',
-                  flexDirection: m.role === 'user' ? 'row-reverse' : 'row',
-                }}
-              >
-                <div
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    background: m.role === 'user' ? 'linear-gradient(135deg, #EC4899, #8B5CF6)' : 'var(--gradient-brand)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#FFFFFF',
-                    flexShrink: 0,
-                    fontSize: '0.75rem',
-                  }}
-                >
-                  {m.role === 'user' ? <User size={14} /> : <Bot size={14} />}
-                </div>
-
-                <div
-                  style={{
-                    padding: '0.75rem 1rem',
-                    borderRadius: '0.9rem',
-                    borderTopRightRadius: m.role === 'user' ? '0.2rem' : '0.9rem',
-                    borderTopLeftRadius: m.role === 'user' ? '0.9rem' : '0.2rem',
-                    background:
-                      m.role === 'user'
-                        ? 'linear-gradient(135deg, #4F46E5 0%, #6366F1 100%)'
-                        : 'rgba(30, 41, 59, 0.85)',
-                    border: '1px solid',
-                    borderColor:
-                      m.role === 'user' ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255, 255, 255, 0.08)',
-                    color: '#F8FAFC',
-                    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.18)',
-                  }}
-                >
-                  {m.type === 'invention_card' ? (
-                    <InventionCard card={m} />
-                  ) : (
-                    <FormattedMessageText text={m.message} />
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {loading && (
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', alignSelf: 'flex-start' }}>
-                <div
-                  style={{
-                    width: '28px',
-                    height: '28px',
-                    borderRadius: '50%',
-                    background: 'var(--gradient-brand)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: '#FFFFFF',
-                  }}
-                >
-                  <Bot size={14} />
-                </div>
-                <div
-                  style={{
-                    padding: '0.55rem 0.85rem',
-                    borderRadius: '0.85rem',
-                    background: 'rgba(30, 41, 59, 0.85)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.45rem',
-                    color: '#A5B4FC',
-                    fontSize: '0.8rem',
-                  }}
-                >
-                  <Loader2 size={13} className="animate-spin" />
-                  <span>Thinking...</span>
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Quick Suggestions */}
-          <div
-            style={{
-              padding: '0.45rem 0.85rem',
-              background: 'rgba(15, 23, 42, 0.6)',
-              borderTop: '1px solid rgba(255, 255, 255, 0.05)',
-              display: 'flex',
-              gap: '0.4rem',
-              overflowX: 'auto',
-              scrollbarWidth: 'none',
-            }}
-          >
-            {quickSuggestions.map((chip, idx) => (
-              <button
-                key={idx}
-                disabled={loading}
-                onClick={() => handleSuggestionClick(chip)}
-                style={{
-                  whiteSpace: 'nowrap',
-                  padding: '0.25rem 0.65rem',
-                  borderRadius: 'var(--radius-full)',
-                  background: 'rgba(99, 102, 241, 0.12)',
-                  border: '1px solid rgba(99, 102, 241, 0.28)',
-                  color: '#C7D2FE',
-                  fontSize: '0.74rem',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  transition: 'background 0.15s ease',
-                }}
-                onMouseOver={(e) => (e.currentTarget.style.background = 'rgba(99, 102, 241, 0.25)')}
-                onMouseOut={(e) => (e.currentTarget.style.background = 'rgba(99, 102, 241, 0.12)')}
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
-
-          {/* Input Bar */}
-          <div
-            style={{
-              padding: '0.75rem 0.85rem',
-              background: 'rgba(15, 23, 42, 0.95)',
-              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-              display: 'flex',
-              gap: '0.5rem',
-              alignItems: 'center',
-            }}
-          >
-            <input
-              ref={inputRef}
-              type="text"
-              placeholder="Ask anything in English or Tanglish..."
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={loading}
-              className="form-input"
-              style={{
-                flex: 1,
-                padding: '0.55rem 0.85rem',
-                fontSize: '0.86rem',
-                borderRadius: 'var(--radius-full)',
-                background: 'rgba(30, 41, 59, 0.6)',
-              }}
-            />
-            <button
-              onClick={() => handleSend()}
-              disabled={!inputMessage.trim() || loading}
-              className="btn btn-primary"
-              style={{
-                width: '38px',
-                height: '38px',
-                borderRadius: '50%',
-                padding: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-              title="Send Message"
-            >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            </button>
-          </div>
+          {renderChatBody({ isModal: true })}
         </div>
       )}
     </>

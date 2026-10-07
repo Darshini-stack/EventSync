@@ -195,6 +195,22 @@ const generateLocalFallback = ({
     };
   }
 
+  // 1b. Image generation refusal (Image generation feature completely removed)
+  const isImageGenQuery =
+    /\b(?:generate|create|design|draw|paint|sketch|render|synthesize)\b.*\b(?:image|picture|poster|banner|flyer|artwork|visual|photo|illustration|drawing)\b/i.test(q) ||
+    /\b(?:make|build)\b.*\b(?:poster|flyer|banner|image|picture)\b/i.test(q) ||
+    /\bposter\s+(?:generate|create|cheyyi|kavali|ivvu|ivvandi)\b/i.test(q) ||
+    /\b(?:image\s+create\s+cheyyi|image\s+generate\s+cheyyi|poster\s+cheyyi|bomma\s+veyyi)\b/i.test(q) ||
+    /\b(?:event\s+ki|event\s+kosam)\s+(?:poster|banner|flyer)\b/i.test(q);
+
+  if (isImageGenQuery) {
+    return {
+      type: 'text',
+      message:
+        'Image and poster generation features are not supported in EventSync Assistant. However, I can help you with event details, schedules, registration links, writing promotional copy, or answering any questions you have in text!',
+    };
+  }
+
   // 2. Strict Privacy refusal for Student (Isolation Check)
   if (userRole === 'STUDENT') {
     const asksAnotherPerson =

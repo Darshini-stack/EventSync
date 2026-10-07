@@ -118,31 +118,42 @@ export const EventRegistrationPage = () => {
     }
   }, [user]);
 
-  // Load Event
+  // Load Event from MongoDB
   const loadEvent = useCallback(async () => {
+    if (!id || typeof id !== 'string' || !/^[0-9a-fA-F]{24}$/.test(id.trim())) {
+      setEvent(null);
+      setErrorMsg('Invalid Event ID format in registration link or QR code.');
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setErrorMsg(null);
     try {
-      const res = await fetchEventById(id);
-      if (res.success && res.data) {
+      const res = await fetchEventById(id.trim());
+      if (res && res.success && res.data) {
         setEvent(res.data);
+        setErrorMsg(null);
       } else {
         setEvent(null);
-        setErrorMsg(res.message || 'Event not found or unavailable.');
+        setErrorMsg(res?.message || 'Event not found or unavailable in database.');
       }
     } catch (err) {
       setEvent(null);
-      setErrorMsg('Failed to connect to EventSync server.');
+      setErrorMsg('Failed to connect to EventSync server. Please check your network and retry.');
+    } finally {
+      setLoading(false);
     }
   }, [id]);
 
-  // Check Registration Status
+  // Check Registration Status in background (does not block initial event render)
   const checkRegistration = useCallback(async () => {
-    if (!isAuthenticated || !isStudent) {
+    if (!isAuthenticated || !isStudent || !id || !/^[0-9a-fA-F]{24}$/.test(id.trim())) {
       setMyRegistration(null);
       return;
     }
     try {
       const res = await fetchMyRegistrations();
-      if (res.success && Array.isArray(res.data)) {
+      if (res && res.success && Array.isArray(res.data)) {
         const found = res.data.find(
           (r) =>
             ((r.event && (r.event._id === id || r.event === id)) || r.event === id) &&
@@ -152,7 +163,7 @@ export const EventRegistrationPage = () => {
         if (found) {
           // Pre-fetch pass data
           const passRes = await fetchPassByRegistration(found._id);
-          if (passRes.success && passRes.data) {
+          if (passRes && passRes.success && passRes.data) {
             setPassData(passRes.data);
           }
         }
@@ -162,14 +173,29 @@ export const EventRegistrationPage = () => {
     }
   }, [id, isAuthenticated, isStudent]);
 
+  // Initial event load on mount or id change
   useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      await Promise.all([loadEvent(), checkRegistration()]);
+    loadEvent();
+  }, [loadEvent]);
+
+  // Check existing registration when auth or event becomes ready
+  useEffect(() => {
+    if (isAuthenticated && isStudent && event) {
+      checkRegistration();
+    }
+  }, [isAuthenticated, isStudent, event?._id, checkRegistration]);
+
+  // Fallback safety timer: guarantees loading state never hangs permanently
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => {
       setLoading(false);
-    };
-    init();
-  }, [loadEvent, checkRegistration]);
+      if (!event) {
+        setErrorMsg('Loading timed out. Please check your network connection and retry.');
+      }
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [loading, event]);
 
   // Socket seat updates
   useEffect(() => {
@@ -385,12 +411,17 @@ export const EventRegistrationPage = () => {
       <div style={{ maxWidth: '800px', margin: '2rem auto' }}>
         <EmptyState
           icon={AlertCircle}
-          title="Event Not Found"
-          description={errorMsg || 'The requested event is unavailable.'}
+          title="Unable to Load Event"
+          description={errorMsg || 'The requested event is unavailable. Please check your connection and try again.'}
           action={
-            <Link to="/events">
-              <Button variant="primary">Browse Events</Button>
-            </Link>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Button variant="secondary" onClick={() => loadEvent()}>
+                Retry
+              </Button>
+              <Link to="/events">
+                <Button variant="primary">Browse Events</Button>
+              </Link>
+            </div>
           }
         />
       </div>

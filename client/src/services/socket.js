@@ -3,14 +3,15 @@ import { io } from 'socket.io-client';
 let socket = null;
 
 export const getSocketUrl = () => {
-  if (
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.hostname.startsWith('192.168.') ||
-      window.location.hostname.startsWith('10.'))
-  ) {
-    return window.location.origin;
+  if (typeof window !== 'undefined' && window.location) {
+    const { hostname, port } = window.location;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const isPrivateLan = /(^127\.)|(^10\.)|(^172\.(1[6-9]|2[0-9]|3[0-1])\.)|(^192\.168\.)/.test(hostname);
+    const isDevServer = port === '5173' || port === '5174' || Boolean(import.meta.env.DEV);
+
+    if (isLocalhost || isPrivateLan || isDevServer) {
+      return window.location.origin;
+    }
   }
 
   const envUrl = import.meta.env.VITE_SOCKET_URL;
@@ -19,10 +20,13 @@ export const getSocketUrl = () => {
   }
   
   if (typeof window !== 'undefined' && window.location) {
+    if (window.location.hostname.endsWith('vercel.app')) {
+      return 'https://eventsync-fn5p.onrender.com';
+    }
     return window.location.origin;
   }
 
-  return envUrl || 'http://localhost:5000';
+  return envUrl || 'https://eventsync-fn5p.onrender.com';
 };
 
 export const initSocket = () => {

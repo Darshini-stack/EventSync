@@ -3,32 +3,41 @@ import { getPublicAppUrl, getEventRegistrationUrl } from '../utils/url';
 export { getPublicAppUrl, getEventRegistrationUrl };
 
 export const getApiBaseUrl = () => {
-  // When developing or testing locally on localhost or LAN, use the Vite proxy (/api -> local backend)
-  if (
-    typeof window !== 'undefined' &&
-    (window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1' ||
-      window.location.hostname.startsWith('192.168.') ||
-      window.location.hostname.startsWith('10.'))
-  ) {
+  // 1. In browser environments during development or local/LAN testing
+  if (typeof window !== 'undefined' && window.location) {
+    const { hostname, port } = window.location;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    const isPrivateLan = /(^127\.)|(^10\.)|(^172\.(1[6-9]|2[0-9]|3[0-1])\.)|(^192\.168\.)/.test(hostname);
+    const isDevServer = port === '5173' || port === '5174' || Boolean(import.meta.env.DEV);
+
+    // Whenever accessing via localhost or any LAN IP (mobile Wi-Fi / hotspot),
+    // use relative '/api' so the Vite dev server proxies directly to the backend machine
+    if (isLocalhost || isPrivateLan || isDevServer) {
+      return '/api';
+    }
+  }
+
+  // 2. Environment variable override for deployed builds
+  const envUrl = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim() !== '') {
+    const trimmed = envUrl.trim();
+    if (!trimmed.includes('localhost') && !trimmed.includes('127.0.0.1')) {
+      return trimmed.replace(/\/+$/, '');
+    }
+  }
+
+  // 3. Fallback for deployed production environments
+  if (typeof window !== 'undefined' && window.location) {
+    if (window.location.hostname.endsWith('vercel.app')) {
+      return 'https://eventsync-fn5p.onrender.com/api';
+    }
     return '/api';
   }
 
-  const envUrl = import.meta.env.VITE_API_URL;
-  // If explicitly configured with a non-localhost URL (e.g. deployed production backend on Vercel), use it directly
-  if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
-    return envUrl;
-  }
-
-  // When running in the browser, leverage the Vite proxy (/api -> backend)
-  if (typeof window !== 'undefined') {
-    return '/api';
-  }
-
-  return envUrl || 'http://localhost:5000/api';
+  return envUrl || 'https://eventsync-fn5p.onrender.com/api';
 };
 
-// Generic request helper with automatic Authorization header injection
+// Generic request helper with automatic Authorization header injection and request timeouts
 const request = async (endpoint, options = {}) => {
   const baseUrl = getApiBaseUrl();
   const token = typeof window !== 'undefined' ? localStorage.getItem('eventsync_token') : null;
@@ -42,39 +51,61 @@ const request = async (endpoint, options = {}) => {
     ...options.headers,
   };
 
+  // 12-second default request timeout to prevent infinite buffering
+  const timeoutMs = options.timeout || 12000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
     const response = await fetch(`${baseUrl}${endpoint}`, {
       ...options,
       headers,
+      signal: options.signal || controller.signal,
     });
+    clearTimeout(timeoutId);
 
-    const data = await response.json();
+    let data = null;
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      try {
+        data = await response.json();
+      } catch (jsonErr) {
+        data = null;
+      }
+    } else {
+      const text = await response.text();
+      data = { message: text.slice(0, 300) || `Server returned ${response.status}` };
+    }
 
     if (!response.ok) {
       return {
         success: false,
         status: response.status,
-        message: data.message || 'An error occurred during the request.',
-        data: data.data || null,
+        message: data?.message || `Request failed with status ${response.status}`,
+        data: data?.data || null,
         ...data,
       };
     }
 
     return {
-      success: true,
+      success: data?.success !== undefined ? data.success : true,
       status: response.status,
-      message: data.message || 'Success',
-      data: data.data !== undefined ? data.data : data,
-      counts: data.counts,
-      count: data.count,
-      token: data.token,
-      user: data.user,
+      message: data?.message || 'Success',
+      data: data?.data !== undefined ? data.data : data,
+      counts: data?.counts,
+      count: data?.count,
+      token: data?.token,
+      user: data?.user,
     };
   } catch (error) {
+    clearTimeout(timeoutId);
+    const isTimeout = error.name === 'AbortError';
     return {
       success: false,
-      status: 0,
-      message: error.message || 'Network unreachable. Please ensure the backend server is running.',
+      status: isTimeout ? 408 : 0,
+      message: isTimeout
+        ? 'Request timed out. Please check your network connection and try again.'
+        : error.message || 'Network unreachable. Please ensure the backend server is running.',
       data: null,
     };
   }
@@ -439,11 +470,12 @@ export const deleteNotification = async (id) => {
 
 // --- AI CHATBOT APIS ---
 
-// POST /api/chat (Send chat prompt with latest 10 messages history)
-export const sendChatMessage = async ({ message, history = [] }) => {
+// POST /api/chat (Send chat prompt with latest 10 messages history and optional eventId)
+export const sendChatMessage = async ({ message, history = [], eventId = null }) => {
+  const clientOrigin = typeof window !== 'undefined' && window.location ? window.location.origin : '';
   return request('/chat', {
     method: 'POST',
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message, history, eventId, clientOrigin }),
   });
 };
 

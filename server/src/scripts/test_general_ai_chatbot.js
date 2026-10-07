@@ -13,10 +13,10 @@
 
 const path = require('path');
 const dotenv = require('dotenv');
-dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
-const { generateChatResponse, generateLocalFallback } = require('./src/services/llmService');
-const { CREATOR_DATA } = require('./src/config/creatorConfig');
+const { generateChatResponse, generateLocalFallback } = require('../services/llmService');
+const { CREATOR_DATA } = require('../config/creatorConfig');
 
 let passedTests = 0;
 let failedTests = 0;
