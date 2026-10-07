@@ -16,6 +16,7 @@ if (!process.env.RENDER && config.nodeEnv !== 'production') {
 mongoose.set('bufferCommands', false);
 
 let isConnected = false;
+let retryTimer = null;
 
 const connectDB = async () => {
   const tryConnect = async (uri, isFallback = false) => {
@@ -60,9 +61,21 @@ const connectDB = async () => {
 
     return conn;
   } catch (error) {
-    console.error(`[MongoDB] Fatal connection error: ${error.message}`);
+    console.error(`[MongoDB] Initial connection error: ${error.message}`);
     isConnected = false;
-    // We do not exit process immediately in development so health-check can report database error
+    // Resilient background retry: if initial connection failed (e.g. cloud cluster resuming),
+    // automatically retry every 8 seconds until connected.
+    if (!retryTimer && mongoose.connection.readyState !== 1) {
+      retryTimer = setTimeout(async () => {
+        retryTimer = null;
+        console.log('[MongoDB] Retrying connection to database in background...');
+        try {
+          await connectDB();
+        } catch (retryErr) {
+          // Handled in catch block
+        }
+      }, 8000);
+    }
     return null;
   }
 };
