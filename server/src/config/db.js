@@ -17,6 +17,7 @@ mongoose.set('bufferCommands', false);
 
 let isConnected = false;
 let retryTimer = null;
+let lastError = null;
 
 const connectDB = async () => {
   const tryConnect = async (uri, isFallback = false) => {
@@ -61,7 +62,7 @@ const connectDB = async () => {
 
     return conn;
   } catch (error) {
-    console.error(`[MongoDB] Initial connection error: ${error.message}`);
+    lastError = (error?.message || 'Unknown database error').replace(/:([^:@]+)@/, ':***@');
     isConnected = false;
     // Resilient background retry: if initial connection failed (e.g. cloud cluster resuming),
     // automatically retry every 8 seconds until connected.
@@ -94,6 +95,7 @@ const getDBStatus = () => {
     isConnected: stateCode === 1,
     host: mongoose.connection.host || null,
     name: mongoose.connection.name || null,
+    lastError: isConnected ? null : lastError,
   };
 };
 

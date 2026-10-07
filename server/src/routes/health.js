@@ -42,6 +42,7 @@ router.get('/', (req, res) => {
       isConnected: dbStatus.isConnected,
       host: dbStatus.host,
       databaseName: dbStatus.name,
+      lastError: dbStatus.lastError || null,
     },
     socket: {
       initialized: socketStats.isInitialized,
